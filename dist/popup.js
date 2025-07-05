@@ -55125,7 +55125,30 @@ ${prettyStateOverride(stateOverride)}`;
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { style: { margin: "0 0 20px 0", color: "#333", textAlign: "center" }, children: "Welcome to PrivatePay" }),
           !walletInfo ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: "15px" }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: { display: "block", marginBottom: "5px", color: "#666" }, children: "Enter 12-word seed phrase:" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { style: { display: "flex", alignItems: "center", gap: "6px", marginBottom: "5px", color: "#666" }, children: [
+                "Enter 12-word PrivacyPools secret:",
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "span",
+                  {
+                    title: "For the demo, use a 12-word seed phrase with testnet funds",
+                    style: {
+                      display: "inline-block",
+                      width: "16px",
+                      height: "16px",
+                      backgroundColor: "#007bff",
+                      color: "white",
+                      borderRadius: "50%",
+                      fontSize: "11px",
+                      fontWeight: "bold",
+                      textAlign: "center",
+                      lineHeight: "16px",
+                      cursor: "help",
+                      userSelect: "none"
+                    },
+                    children: "?"
+                  }
+                )
+              ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 "textarea",
                 {
@@ -55168,7 +55191,7 @@ ${prettyStateOverride(stateOverride)}`;
                   cursor: isImporting ? "not-allowed" : "pointer",
                   fontSize: "14px"
                 },
-                children: isImporting ? "Importing..." : "Import Wallet"
+                children: isImporting ? "Importing..." : "Import Secret"
               }
             )
           ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
@@ -55361,8 +55384,8 @@ ${prettyStateOverride(stateOverride)}`;
             }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { style: { margin: "0 0 10px 0", color: "#0056b3", fontSize: "14px" }, children: "\u{1F4B0} Deposit Suggestion" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { style: { fontSize: "12px", color: "#0056b3", margin: "0 0 15px 0" }, children: [
-                "To enable secure transactions, consider depositing 90% of your balance (",
-                (parseFloat(masterBalance) * 0.9).toFixed(4),
+                "To enable secure transactions, consider depositing some of your balance (",
+                (parseFloat(masterBalance) * 0.5).toFixed(4),
                 " ETH) to the Pool contract."
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: "8px" }, children: [
@@ -55388,7 +55411,7 @@ ${prettyStateOverride(stateOverride)}`;
                   {
                     onClick: async () => {
                       try {
-                        const depositAmount = (parseFloat(masterBalance) * 0.9).toFixed(4);
+                        const depositAmount = (parseFloat(masterBalance) * 0.5).toFixed(4);
                         await depositToPool(depositAmount);
                       } catch (error2) {
                         console.error("Deposit failed:", error2);

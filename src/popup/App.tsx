@@ -298,8 +298,27 @@ const App = () => {
       {!walletInfo ? (
         <div>
           <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', color: '#666' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '5px', color: '#666' }}>
               Enter 12-word PrivacyPools secret:
+              <span
+                title="For the demo, use a 12-word seed phrase with testnet funds"
+                style={{
+                  display: 'inline-block',
+                  width: '16px',
+                  height: '16px',
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  borderRadius: '50%',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  lineHeight: '16px',
+                  cursor: 'help',
+                  userSelect: 'none'
+                }}
+              >
+                ?
+              </span>
             </label>
             <textarea
               rows={3}
@@ -345,7 +364,7 @@ const App = () => {
               fontSize: '14px'
             }}
           >
-            {isImporting ? 'Importing...' : 'Import Wallet'}
+            {isImporting ? 'Importing...' : 'Import Secret'}
           </button>
         </div>
       ) : (
