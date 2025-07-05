@@ -49,7 +49,7 @@ const build = async () => {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Mini ETH Wallet</title>
+  <title>PrivacyPay</title>
   <style>
     body {
       margin: 0;
