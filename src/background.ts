@@ -614,6 +614,77 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ error: 'Failed to get private key' });
         }
       }
+      
+      if (msg.type === 'fundSessionIfNeeded') {
+        const { sessionAddress, requiredAmount } = msg;
+        
+        if (!masterWallet) {
+          sendResponse({ error: 'No master wallet available' });
+          return;
+        }
+        
+        try {
+          console.log(`🔋 Checking if session ${sessionAddress} needs funding...`);
+          
+          // Create provider to check balances
+          const provider = new ethers.JsonRpcProvider('https://ethereum-sepolia-rpc.publicnode.com');
+          
+          // Check session wallet balance
+          const sessionBalance = await provider.getBalance(sessionAddress);
+          const requiredWei = ethers.parseEther(requiredAmount);
+          
+          console.log(`💰 Session balance: ${ethers.formatEther(sessionBalance)} ETH`);
+          console.log(`🎯 Required: ${requiredAmount} ETH`);
+          
+          if (sessionBalance >= requiredWei) {
+            console.log('✅ Session has sufficient balance, no funding needed');
+            sendResponse({ success: true, funded: false, message: 'Session already has sufficient balance' });
+            return;
+          }
+          
+          // Check master wallet balance
+          const masterBalance = await provider.getBalance(masterWallet.address);
+          console.log(`🏛️ Master balance: ${ethers.formatEther(masterBalance)} ETH`);
+          
+          if (masterBalance < requiredWei) {
+            sendResponse({ error: `Master wallet insufficient funds: has ${ethers.formatEther(masterBalance)} ETH, needs ${requiredAmount} ETH` });
+            return;
+          }
+          
+          // Fund the session wallet
+          console.log(`💸 Funding session with ${requiredAmount} ETH...`);
+          const connectedMasterWallet = masterWallet.connect(provider);
+          
+          const fundingTx = await connectedMasterWallet.sendTransaction({
+            to: sessionAddress,
+            value: requiredWei,
+            gasLimit: 21000 // Simple transfer
+          });
+          
+          console.log(`📝 Funding transaction sent: ${fundingTx.hash}`);
+          console.log(`🔗 View on Etherscan: https://sepolia.etherscan.io/tx/${fundingTx.hash}`);
+          
+          // Wait for confirmation
+          await fundingTx.wait();
+          console.log('✅ Funding transaction confirmed!');
+          
+          // Verify new balance
+          const newSessionBalance = await provider.getBalance(sessionAddress);
+          console.log(`💰 New session balance: ${ethers.formatEther(newSessionBalance)} ETH`);
+          
+          sendResponse({ 
+            success: true, 
+            funded: true, 
+            txHash: fundingTx.hash,
+            newBalance: ethers.formatEther(newSessionBalance),
+            message: `Session funded with ${requiredAmount} ETH`
+          });
+          
+        } catch (error) {
+          console.error('❌ Funding failed:', error);
+          sendResponse({ error: `Funding failed: ${error instanceof Error ? error.message : 'Unknown error'}` });
+        }
+      }
     } catch (error) {
       console.error('Background script error:', error);
       sendResponse({ error: 'Internal error' });

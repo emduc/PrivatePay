@@ -25002,6 +25002,56 @@
                 sendResponse({ error: "Failed to get private key" });
               }
             }
+            if (msg.type === "fundSessionIfNeeded") {
+              const { sessionAddress, requiredAmount } = msg;
+              if (!masterWallet) {
+                sendResponse({ error: "No master wallet available" });
+                return;
+              }
+              try {
+                console.log(`\u{1F50B} Checking if session ${sessionAddress} needs funding...`);
+                const provider = new ethers_exports.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
+                const sessionBalance = await provider.getBalance(sessionAddress);
+                const requiredWei = ethers_exports.parseEther(requiredAmount);
+                console.log(`\u{1F4B0} Session balance: ${ethers_exports.formatEther(sessionBalance)} ETH`);
+                console.log(`\u{1F3AF} Required: ${requiredAmount} ETH`);
+                if (sessionBalance >= requiredWei) {
+                  console.log("\u2705 Session has sufficient balance, no funding needed");
+                  sendResponse({ success: true, funded: false, message: "Session already has sufficient balance" });
+                  return;
+                }
+                const masterBalance = await provider.getBalance(masterWallet.address);
+                console.log(`\u{1F3DB}\uFE0F Master balance: ${ethers_exports.formatEther(masterBalance)} ETH`);
+                if (masterBalance < requiredWei) {
+                  sendResponse({ error: `Master wallet insufficient funds: has ${ethers_exports.formatEther(masterBalance)} ETH, needs ${requiredAmount} ETH` });
+                  return;
+                }
+                console.log(`\u{1F4B8} Funding session with ${requiredAmount} ETH...`);
+                const connectedMasterWallet = masterWallet.connect(provider);
+                const fundingTx = await connectedMasterWallet.sendTransaction({
+                  to: sessionAddress,
+                  value: requiredWei,
+                  gasLimit: 21e3
+                  // Simple transfer
+                });
+                console.log(`\u{1F4DD} Funding transaction sent: ${fundingTx.hash}`);
+                console.log(`\u{1F517} View on Etherscan: https://sepolia.etherscan.io/tx/${fundingTx.hash}`);
+                await fundingTx.wait();
+                console.log("\u2705 Funding transaction confirmed!");
+                const newSessionBalance = await provider.getBalance(sessionAddress);
+                console.log(`\u{1F4B0} New session balance: ${ethers_exports.formatEther(newSessionBalance)} ETH`);
+                sendResponse({
+                  success: true,
+                  funded: true,
+                  txHash: fundingTx.hash,
+                  newBalance: ethers_exports.formatEther(newSessionBalance),
+                  message: `Session funded with ${requiredAmount} ETH`
+                });
+              } catch (error) {
+                console.error("\u274C Funding failed:", error);
+                sendResponse({ error: `Funding failed: ${error instanceof Error ? error.message : "Unknown error"}` });
+              }
+            }
           } catch (error) {
             console.error("Background script error:", error);
             sendResponse({ error: "Internal error" });

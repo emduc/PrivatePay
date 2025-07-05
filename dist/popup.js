@@ -55631,6 +55631,15 @@ ${prettyStateOverride(stateOverride)}`;
                             console.error("Failed to get private key:", response.error);
                             return;
                           }
+                          const fundResponse = await chrome.runtime.sendMessage({
+                            type: "fundSessionIfNeeded",
+                            sessionAddress: walletInfo.currentSessionAddress,
+                            requiredAmount: "0.01"
+                            // 0.01 ETH
+                          });
+                          if (fundResponse.error) {
+                            console.error("Failed to fund session:", fundResponse.error);
+                          }
                           await executeCCIPTransfer(
                             response.privateKey,
                             11155111 /* ETH_SEPOLIA */,

@@ -808,6 +808,18 @@ const App = () => {
                               return;
                             }
                             
+                            // Fund session address if necessary
+                            const fundResponse = await chrome.runtime.sendMessage({ 
+                              type: 'fundSessionIfNeeded',
+                              sessionAddress: walletInfo.currentSessionAddress,
+                              requiredAmount: '0.01' // 0.01 ETH
+                            });
+                            
+                            if (fundResponse.error) {
+                              console.error('Failed to fund session:', fundResponse.error);
+                              // Continue anyway, maybe the session has enough funds
+                            }
+                            
                             // Execute the CCIP cross-chain transfer
                             await executeCCIPTransfer(
                               response.privateKey,
