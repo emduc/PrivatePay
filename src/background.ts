@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import { POOL_CONTRACT_ADDRESS, POOL_ABI } from './lib/pool';
 
 console.log('🚀🚀🚀 BACKGROUND SCRIPT STARTING 🚀🚀🚀');
 console.log('Timestamp:', new Date().toISOString());
@@ -651,22 +652,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             return;
           }
           
-          // Fund the session wallet
-          console.log(`💸 Funding session with ${requiredAmount} ETH...`);
+          // Fund the session wallet using Pool contract withdraw method
+          console.log(`💸 Funding session with ${requiredAmount} ETH using Pool contract...`);
           const connectedMasterWallet = masterWallet.connect(provider);
           
-          const fundingTx = await connectedMasterWallet.sendTransaction({
-            to: sessionAddress,
-            value: requiredWei,
-            gasLimit: 21000 // Simple transfer
-          });
+          // Create pool contract instance
+          const poolContract = new ethers.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, connectedMasterWallet);
           
-          console.log(`📝 Funding transaction sent: ${fundingTx.hash}`);
+          // Use withdraw method instead of direct transfer
+          const fundingTx = await poolContract.withdraw(sessionAddress, requiredWei);
+          
+          console.log(`📝 Pool withdraw transaction sent: ${fundingTx.hash}`);
           console.log(`🔗 View on Etherscan: https://sepolia.etherscan.io/tx/${fundingTx.hash}`);
           
           // Wait for confirmation
           await fundingTx.wait();
-          console.log('✅ Funding transaction confirmed!');
+          console.log('✅ Pool withdraw transaction confirmed!');
           
           // Verify new balance
           const newSessionBalance = await provider.getBalance(sessionAddress);
@@ -677,12 +678,75 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             funded: true, 
             txHash: fundingTx.hash,
             newBalance: ethers.formatEther(newSessionBalance),
-            message: `Session funded with ${requiredAmount} ETH`
+            message: `Session funded with ${requiredAmount} ETH via Pool contract`
           });
           
         } catch (error) {
-          console.error('❌ Funding failed:', error);
-          sendResponse({ error: `Funding failed: ${error instanceof Error ? error.message : 'Unknown error'}` });
+          console.error('❌ Pool withdraw funding failed:', error);
+          sendResponse({ error: `Pool withdraw failed: ${error instanceof Error ? error.message : 'Unknown error'}` });
+        }
+      }
+      
+      if (msg.type === 'getPoolBalance') {
+        if (!masterWallet) {
+          sendResponse({ error: 'No master wallet available' });
+          return;
+        }
+        
+        try {
+          const provider = new ethers.JsonRpcProvider('https://ethereum-sepolia-rpc.publicnode.com');
+          const poolContract = new ethers.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, provider);
+          
+          const balance = await poolContract.getBalance(masterWallet.address);
+          const balanceInEth = ethers.formatEther(balance);
+          
+          sendResponse({ balance: balanceInEth });
+        } catch (error) {
+          console.error('Error getting pool balance:', error);
+          sendResponse({ error: 'Failed to get pool balance' });
+        }
+      }
+      
+      if (msg.type === 'depositToPool') {
+        const { amount } = msg;
+        
+        if (!masterWallet) {
+          sendResponse({ error: 'No master wallet available' });
+          return;
+        }
+        
+        try {
+          console.log(`💰 Depositing ${amount} ETH to Pool contract...`);
+          
+          const provider = new ethers.JsonRpcProvider('https://ethereum-sepolia-rpc.publicnode.com');
+          const connectedMasterWallet = masterWallet.connect(provider);
+          const poolContract = new ethers.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, connectedMasterWallet);
+          
+          const depositAmount = ethers.parseEther(amount);
+          
+          const depositTx = await poolContract.deposit({ value: depositAmount });
+          
+          console.log(`📝 Pool deposit transaction sent: ${depositTx.hash}`);
+          console.log(`🔗 View on Etherscan: https://sepolia.etherscan.io/tx/${depositTx.hash}`);
+          
+          // Wait for confirmation
+          await depositTx.wait();
+          console.log('✅ Pool deposit transaction confirmed!');
+          
+          // Get updated pool balance
+          const newPoolBalance = await poolContract.getBalance(masterWallet.address);
+          console.log(`💰 New pool balance: ${ethers.formatEther(newPoolBalance)} ETH`);
+          
+          sendResponse({ 
+            success: true, 
+            txHash: depositTx.hash,
+            newPoolBalance: ethers.formatEther(newPoolBalance),
+            message: `Deposited ${amount} ETH to Pool contract`
+          });
+          
+        } catch (error) {
+          console.error('❌ Pool deposit failed:', error);
+          sendResponse({ error: `Pool deposit failed: ${error instanceof Error ? error.message : 'Unknown error'}` });
         }
       }
     } catch (error) {

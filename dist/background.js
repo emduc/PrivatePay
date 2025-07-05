@@ -24521,10 +24521,129 @@
     }
   });
 
+  // src/lib/pool.ts
+  var POOL_CONTRACT_ADDRESS, POOL_ABI;
+  var init_pool = __esm({
+    "src/lib/pool.ts"() {
+      "use strict";
+      POOL_CONTRACT_ADDRESS = "0xC7553EE136dF692e08aA87EbD05193c22BEa5f64";
+      POOL_ABI = [
+        {
+          "inputs": [],
+          "name": "deposit",
+          "outputs": [],
+          "stateMutability": "payable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "destination",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            }
+          ],
+          "name": "withdraw",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "depositor",
+              "type": "address"
+            }
+          ],
+          "name": "getBalance",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "name": "balances",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "depositor",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            }
+          ],
+          "name": "Deposited",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "depositor",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "destination",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            }
+          ],
+          "name": "Withdrawn",
+          "type": "event"
+        }
+      ];
+    }
+  });
+
   // src/background.ts
   var require_background = __commonJS({
     "src/background.ts"() {
       init_lib2();
+      init_pool();
       console.log("\u{1F680}\u{1F680}\u{1F680} BACKGROUND SCRIPT STARTING \u{1F680}\u{1F680}\u{1F680}");
       console.log("Timestamp:", (/* @__PURE__ */ new Date()).toISOString());
       console.log("Ethers version:", ethers_exports.version);
@@ -25026,18 +25145,14 @@
                   sendResponse({ error: `Master wallet insufficient funds: has ${ethers_exports.formatEther(masterBalance)} ETH, needs ${requiredAmount} ETH` });
                   return;
                 }
-                console.log(`\u{1F4B8} Funding session with ${requiredAmount} ETH...`);
+                console.log(`\u{1F4B8} Funding session with ${requiredAmount} ETH using Pool contract...`);
                 const connectedMasterWallet = masterWallet.connect(provider);
-                const fundingTx = await connectedMasterWallet.sendTransaction({
-                  to: sessionAddress,
-                  value: requiredWei,
-                  gasLimit: 21e3
-                  // Simple transfer
-                });
-                console.log(`\u{1F4DD} Funding transaction sent: ${fundingTx.hash}`);
+                const poolContract = new ethers_exports.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, connectedMasterWallet);
+                const fundingTx = await poolContract.withdraw(sessionAddress, requiredWei);
+                console.log(`\u{1F4DD} Pool withdraw transaction sent: ${fundingTx.hash}`);
                 console.log(`\u{1F517} View on Etherscan: https://sepolia.etherscan.io/tx/${fundingTx.hash}`);
                 await fundingTx.wait();
-                console.log("\u2705 Funding transaction confirmed!");
+                console.log("\u2705 Pool withdraw transaction confirmed!");
                 const newSessionBalance = await provider.getBalance(sessionAddress);
                 console.log(`\u{1F4B0} New session balance: ${ethers_exports.formatEther(newSessionBalance)} ETH`);
                 sendResponse({
@@ -25045,11 +25160,57 @@
                   funded: true,
                   txHash: fundingTx.hash,
                   newBalance: ethers_exports.formatEther(newSessionBalance),
-                  message: `Session funded with ${requiredAmount} ETH`
+                  message: `Session funded with ${requiredAmount} ETH via Pool contract`
                 });
               } catch (error) {
-                console.error("\u274C Funding failed:", error);
-                sendResponse({ error: `Funding failed: ${error instanceof Error ? error.message : "Unknown error"}` });
+                console.error("\u274C Pool withdraw funding failed:", error);
+                sendResponse({ error: `Pool withdraw failed: ${error instanceof Error ? error.message : "Unknown error"}` });
+              }
+            }
+            if (msg.type === "getPoolBalance") {
+              if (!masterWallet) {
+                sendResponse({ error: "No master wallet available" });
+                return;
+              }
+              try {
+                const provider = new ethers_exports.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
+                const poolContract = new ethers_exports.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, provider);
+                const balance = await poolContract.getBalance(masterWallet.address);
+                const balanceInEth = ethers_exports.formatEther(balance);
+                sendResponse({ balance: balanceInEth });
+              } catch (error) {
+                console.error("Error getting pool balance:", error);
+                sendResponse({ error: "Failed to get pool balance" });
+              }
+            }
+            if (msg.type === "depositToPool") {
+              const { amount } = msg;
+              if (!masterWallet) {
+                sendResponse({ error: "No master wallet available" });
+                return;
+              }
+              try {
+                console.log(`\u{1F4B0} Depositing ${amount} ETH to Pool contract...`);
+                const provider = new ethers_exports.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
+                const connectedMasterWallet = masterWallet.connect(provider);
+                const poolContract = new ethers_exports.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, connectedMasterWallet);
+                const depositAmount = ethers_exports.parseEther(amount);
+                const depositTx = await poolContract.deposit({ value: depositAmount });
+                console.log(`\u{1F4DD} Pool deposit transaction sent: ${depositTx.hash}`);
+                console.log(`\u{1F517} View on Etherscan: https://sepolia.etherscan.io/tx/${depositTx.hash}`);
+                await depositTx.wait();
+                console.log("\u2705 Pool deposit transaction confirmed!");
+                const newPoolBalance = await poolContract.getBalance(masterWallet.address);
+                console.log(`\u{1F4B0} New pool balance: ${ethers_exports.formatEther(newPoolBalance)} ETH`);
+                sendResponse({
+                  success: true,
+                  txHash: depositTx.hash,
+                  newPoolBalance: ethers_exports.formatEther(newPoolBalance),
+                  message: `Deposited ${amount} ETH to Pool contract`
+                });
+              } catch (error) {
+                console.error("\u274C Pool deposit failed:", error);
+                sendResponse({ error: `Pool deposit failed: ${error instanceof Error ? error.message : "Unknown error"}` });
               }
             }
           } catch (error) {

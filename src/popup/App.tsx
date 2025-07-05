@@ -33,6 +33,8 @@ const App = () => {
   const [showSessionList, setShowSessionList] = useState(false);
   const [sessionAddresses, setSessionAddresses] = useState<SessionAddress[]>([]);
   const [masterBalance, setMasterBalance] = useState<string>('0');
+  const [poolBalance, setPoolBalance] = useState<string>('0');
+  const [showDepositSuggestion, setShowDepositSuggestion] = useState(false);
   const [showPayUSDC, setShowPayUSDC] = useState(false);
   const [showPaymentOverview, setShowPaymentOverview] = useState(false);
   const [paymentForm, setPaymentForm] = useState<{
@@ -54,6 +56,7 @@ const App = () => {
     loadExistingWallet();
     loadAddressSpoofing();
     loadMasterBalance();
+    loadPoolBalance();
   }, []);
 
   const loadMasterBalance = async () => {
@@ -64,6 +67,34 @@ const App = () => {
       }
     } catch (err) {
       console.error('Error loading master balance:', err);
+    }
+  };
+
+  const loadPoolBalance = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'getPoolBalance' });
+      if (response && !response.error) {
+        setPoolBalance(response.balance);
+      }
+    } catch (err) {
+      console.error('Error loading pool balance:', err);
+    }
+  };
+
+  const depositToPool = async (amount: string) => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'depositToPool', amount });
+      if (response && !response.error) {
+        await loadMasterBalance();
+        await loadPoolBalance();
+        setShowDepositSuggestion(false);
+        return response;
+      } else {
+        throw new Error(response.error || 'Deposit failed');
+      }
+    } catch (err) {
+      console.error('Error depositing to pool:', err);
+      throw err;
     }
   };
 
@@ -189,6 +220,25 @@ const App = () => {
         });
         setMnemonic('');
         setError('');
+        
+        // Load balances and check if we should show deposit suggestion
+        const masterBalanceResponse = await chrome.runtime.sendMessage({ type: 'getMasterBalance' });
+        const poolBalanceResponse = await chrome.runtime.sendMessage({ type: 'getPoolBalance' });
+        
+        if (masterBalanceResponse && !masterBalanceResponse.error) {
+          setMasterBalance(masterBalanceResponse.balance);
+        }
+        if (poolBalanceResponse && !poolBalanceResponse.error) {
+          setPoolBalance(poolBalanceResponse.balance);
+        }
+        
+        // Show deposit suggestion if user has no funds in pool but has wallet balance
+        const poolBalanceNum = parseFloat(poolBalanceResponse?.balance || '0');
+        const masterBalanceNum = parseFloat(masterBalanceResponse?.balance || '0');
+        
+        if (poolBalanceNum === 0 && masterBalanceNum > 0) {
+          setShowDepositSuggestion(true);
+        }
       }
     } catch (err) {
       setError('Invalid seed phrase');
@@ -466,11 +516,69 @@ const App = () => {
             <div style={{ fontSize: '12px', color: '#6c757d' }}>
               Sessions Generated: <strong>{walletInfo.sessionCount}</strong>
             </div>
-            
             <div style={{ fontSize: '12px', color: '#6c757d', marginTop: '5px' }}>
-              Available: <strong style={{ color: '#28a745' }}>{masterBalance} ETH</strong>
+              Pool Balance: <strong style={{ color: '#007bff' }}>{poolBalance} ETH</strong>
             </div>
           </div>
+
+          {/* Deposit Suggestion */}
+          {showDepositSuggestion && (
+            <div style={{ 
+              marginBottom: '20px',
+              padding: '15px',
+              backgroundColor: '#e7f3ff',
+              border: '2px solid #007bff',
+              borderRadius: '8px'
+            }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#0056b3', fontSize: '14px' }}>
+                💰 Deposit Suggestion
+              </h4>
+              <p style={{ fontSize: '12px', color: '#0056b3', margin: '0 0 15px 0' }}>
+                To enable secure transactions, consider depositing 90% of your balance ({(parseFloat(masterBalance) * 0.9).toFixed(4)} ETH) to the Pool contract.
+              </p>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => setShowDepositSuggestion(false)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    backgroundColor: '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  Maybe Later
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const depositAmount = (parseFloat(masterBalance) * 0.9).toFixed(4);
+                      await depositToPool(depositAmount);
+                    } catch (error) {
+                      console.error('Deposit failed:', error);
+                      setError('Deposit failed. Please try again.');
+                    }
+                  }}
+                  style={{
+                    flex: 2,
+                    padding: '8px 12px',
+                    backgroundColor: '#007bff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: '600'
+                  }}
+                >
+                  Deposit 90% ({(parseFloat(masterBalance) * 0.9).toFixed(4)} ETH)
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Pay USDC Section */}
           <div style={{ 
