@@ -36887,6 +36887,10 @@
             console.error("Error switching session:", err);
           }
         };
+        const openEtherscan = (address) => {
+          const etherscanUrl = `https://sepolia.etherscan.io/address/${address}`;
+          chrome.tabs.create({ url: etherscanUrl });
+        };
         const loadExistingWallet = async () => {
           try {
             const response = await chrome.runtime.sendMessage({ type: "getWalletInfo" });
@@ -37035,7 +37039,7 @@
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "5px" }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { style: { color: "#28a745" }, children: "Current Session Address:" }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "button",
+                    "span",
                     {
                       onClick: () => {
                         setShowSessionList(!showSessionList);
@@ -37044,28 +37048,54 @@
                         }
                       },
                       style: {
-                        padding: "4px 8px",
                         fontSize: "11px",
-                        backgroundColor: "#007bff",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "3px",
-                        cursor: "pointer"
+                        color: "#6c757d",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                        opacity: 0.8,
+                        transition: "opacity 0.2s, color 0.2s"
                       },
-                      children: showSessionList ? "Hide Sessions" : "Show All Sessions"
+                      onMouseEnter: (e) => {
+                        e.currentTarget.style.opacity = "1";
+                        e.currentTarget.style.color = "#495057";
+                      },
+                      onMouseLeave: (e) => {
+                        e.currentTarget.style.opacity = "0.8";
+                        e.currentTarget.style.color = "#6c757d";
+                      },
+                      children: showSessionList ? "\u25B3 hide" : "\u25BD show all"
                     }
                   )
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-                  marginTop: "5px",
-                  wordBreak: "break-all",
-                  fontSize: "11px",
-                  fontFamily: "monospace",
-                  color: "#155724",
-                  backgroundColor: "#d4edda",
-                  padding: "6px",
-                  borderRadius: "3px"
-                }, children: walletInfo.currentSessionAddress }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "div",
+                  {
+                    onClick: () => openEtherscan(walletInfo.currentSessionAddress),
+                    style: {
+                      marginTop: "5px",
+                      wordBreak: "break-all",
+                      fontSize: "11px",
+                      fontFamily: "monospace",
+                      color: "#155724",
+                      backgroundColor: "#d4edda",
+                      padding: "6px",
+                      borderRadius: "3px",
+                      cursor: "pointer",
+                      transition: "background-color 0.2s",
+                      border: "1px solid transparent"
+                    },
+                    onMouseEnter: (e) => {
+                      e.currentTarget.style.backgroundColor = "#c3e6cb";
+                      e.currentTarget.style.borderColor = "#b1dfbb";
+                    },
+                    onMouseLeave: (e) => {
+                      e.currentTarget.style.backgroundColor = "#d4edda";
+                      e.currentTarget.style.borderColor = "transparent";
+                    },
+                    title: "Click to view on Etherscan",
+                    children: walletInfo.currentSessionAddress
+                  }
+                ),
                 showSessionList && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
                   marginTop: "10px",
                   maxHeight: "200px",
@@ -37084,11 +37114,9 @@
                   sessionAddresses.length > 0 ? sessionAddresses.map((session) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                     "div",
                     {
-                      onClick: () => switchToSession(session.sessionNumber),
                       style: {
                         padding: "8px",
                         borderBottom: "1px solid #dee2e6",
-                        cursor: "pointer",
                         backgroundColor: session.isCurrent ? "#d4edda" : "transparent",
                         transition: "background-color 0.2s"
                       },
@@ -37103,18 +37131,80 @@
                         }
                       },
                       children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: "11px", color: "#6c757d", marginBottom: "2px" }, children: [
-                          "Session #",
-                          session.sessionNumber,
-                          " ",
-                          session.isCurrent && "(Current)"
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+                          fontSize: "11px",
+                          color: "#6c757d",
+                          marginBottom: "2px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center"
+                        }, children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                            "Session #",
+                            session.sessionNumber,
+                            " ",
+                            session.isCurrent && "(Current)"
+                          ] }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: "8px" }, children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                              "span",
+                              {
+                                onClick: (e) => {
+                                  e.stopPropagation();
+                                  openEtherscan(session.address);
+                                },
+                                style: {
+                                  cursor: "pointer",
+                                  color: "#007bff",
+                                  fontSize: "10px",
+                                  textDecoration: "underline"
+                                },
+                                title: "View on Etherscan",
+                                children: "\u{1F4CA}"
+                              }
+                            ),
+                            !session.isCurrent && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                              "span",
+                              {
+                                onClick: (e) => {
+                                  e.stopPropagation();
+                                  switchToSession(session.sessionNumber);
+                                },
+                                style: {
+                                  cursor: "pointer",
+                                  color: "#28a745",
+                                  fontSize: "10px",
+                                  textDecoration: "underline"
+                                },
+                                title: "Switch to this session",
+                                children: "\u{1F504}"
+                              }
+                            )
+                          ] })
                         ] }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-                          fontSize: "10px",
-                          fontFamily: "monospace",
-                          wordBreak: "break-all",
-                          color: "#495057"
-                        }, children: session.address })
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                          "div",
+                          {
+                            onClick: () => openEtherscan(session.address),
+                            style: {
+                              fontSize: "10px",
+                              fontFamily: "monospace",
+                              wordBreak: "break-all",
+                              color: "#495057",
+                              cursor: "pointer",
+                              padding: "2px",
+                              borderRadius: "2px"
+                            },
+                            onMouseEnter: (e) => {
+                              e.currentTarget.style.backgroundColor = "#f8f9fa";
+                            },
+                            onMouseLeave: (e) => {
+                              e.currentTarget.style.backgroundColor = "transparent";
+                            },
+                            title: "Click to view on Etherscan",
+                            children: session.address
+                          }
+                        )
                       ]
                     },
                     session.sessionNumber
@@ -37162,7 +37252,7 @@
                     style: { fontSize: "12px", color: "#856404", cursor: "pointer" },
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u{1F3AD} Address Spoofing:" }),
-                      " Show fake rich address (0xA6a49...83B5) to dApps"
+                      " Show fake rich address to dApps"
                     ]
                   }
                 )

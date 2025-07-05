@@ -96,6 +96,11 @@ const App = () => {
     }
   };
 
+  const openEtherscan = (address: string) => {
+    const etherscanUrl = `https://sepolia.etherscan.io/address/${address}`;
+    chrome.tabs.create({ url: etherscanUrl });
+  };
+
   const loadExistingWallet = async () => {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'getWalletInfo' });
@@ -283,7 +288,7 @@ const App = () => {
               <div style={{ marginBottom: '15px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
                   <strong style={{ color: '#28a745' }}>Current Session Address:</strong>
-                  <button
+                  <span
                     onClick={() => {
                       setShowSessionList(!showSessionList);
                       if (!showSessionList) {
@@ -291,28 +296,50 @@ const App = () => {
                       }
                     }}
                     style={{
-                      padding: '4px 8px',
                       fontSize: '11px',
-                      backgroundColor: '#007bff',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '3px',
-                      cursor: 'pointer'
+                      color: '#6c757d',
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      opacity: 0.8,
+                      transition: 'opacity 0.2s, color 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.opacity = '1';
+                      e.currentTarget.style.color = '#495057';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.opacity = '0.8';
+                      e.currentTarget.style.color = '#6c757d';
                     }}
                   >
-                    {showSessionList ? 'Hide Sessions' : 'Show All Sessions'}
-                  </button>
+                    {showSessionList ? '△ hide' : '▽ show all'}
+                  </span>
                 </div>
-                <div style={{ 
-                  marginTop: '5px',
-                  wordBreak: 'break-all',
-                  fontSize: '11px',
-                  fontFamily: 'monospace',
-                  color: '#155724',
-                  backgroundColor: '#d4edda',
-                  padding: '6px',
-                  borderRadius: '3px'
-                }}>
+                <div 
+                  onClick={() => openEtherscan(walletInfo.currentSessionAddress!)}
+                  style={{ 
+                    marginTop: '5px',
+                    wordBreak: 'break-all',
+                    fontSize: '11px',
+                    fontFamily: 'monospace',
+                    color: '#155724',
+                    backgroundColor: '#d4edda',
+                    padding: '6px',
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s',
+                    border: '1px solid transparent'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#c3e6cb';
+                    e.currentTarget.style.borderColor = '#b1dfbb';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#d4edda';
+                    e.currentTarget.style.borderColor = 'transparent';
+                  }}
+                  title="Click to view on Etherscan"
+                >
                   {walletInfo.currentSessionAddress}
                 </div>
                 
@@ -338,11 +365,9 @@ const App = () => {
                       sessionAddresses.map((session) => (
                         <div
                           key={session.sessionNumber}
-                          onClick={() => switchToSession(session.sessionNumber)}
                           style={{
                             padding: '8px',
                             borderBottom: '1px solid #dee2e6',
-                            cursor: 'pointer',
                             backgroundColor: session.isCurrent ? '#d4edda' : 'transparent',
                             transition: 'background-color 0.2s'
                           }}
@@ -357,15 +382,69 @@ const App = () => {
                             }
                           }}
                         >
-                          <div style={{ fontSize: '11px', color: '#6c757d', marginBottom: '2px' }}>
-                            Session #{session.sessionNumber} {session.isCurrent && '(Current)'}
-                          </div>
-                          <div style={{
-                            fontSize: '10px',
-                            fontFamily: 'monospace',
-                            wordBreak: 'break-all',
-                            color: '#495057'
+                          <div style={{ 
+                            fontSize: '11px', 
+                            color: '#6c757d', 
+                            marginBottom: '2px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
                           }}>
+                            <span>Session #{session.sessionNumber} {session.isCurrent && '(Current)'}</span>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <span 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEtherscan(session.address);
+                                }}
+                                style={{ 
+                                  cursor: 'pointer', 
+                                  color: '#007bff',
+                                  fontSize: '10px',
+                                  textDecoration: 'underline'
+                                }}
+                                title="View on Etherscan"
+                              >
+                                📊
+                              </span>
+                              {!session.isCurrent && (
+                                <span 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    switchToSession(session.sessionNumber);
+                                  }}
+                                  style={{ 
+                                    cursor: 'pointer', 
+                                    color: '#28a745',
+                                    fontSize: '10px',
+                                    textDecoration: 'underline'
+                                  }}
+                                  title="Switch to this session"
+                                >
+                                  🔄
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div 
+                            onClick={() => openEtherscan(session.address)}
+                            style={{
+                              fontSize: '10px',
+                              fontFamily: 'monospace',
+                              wordBreak: 'break-all',
+                              color: '#495057',
+                              cursor: 'pointer',
+                              padding: '2px',
+                              borderRadius: '2px'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#f8f9fa';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                            }}
+                            title="Click to view on Etherscan"
+                          >
                             {session.address}
                           </div>
                         </div>
@@ -413,7 +492,7 @@ const App = () => {
                 htmlFor="addressSpoofing" 
                 style={{ fontSize: '12px', color: '#856404', cursor: 'pointer' }}
               >
-                <strong>🎭 Address Spoofing:</strong> Show fake rich address (0xA6a49...83B5) to dApps
+                <strong>🎭 Address Spoofing:</strong> Show fake rich address to dApps
               </label>
             </div>
           </div>
