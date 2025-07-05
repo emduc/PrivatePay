@@ -14,6 +14,12 @@ interface PendingTransaction {
   from: string;
 }
 
+interface SessionAddress {
+  sessionNumber: number;
+  address: string;
+  isCurrent: boolean;
+}
+
 const App = () => {
   const [mnemonic, setMnemonic] = useState('');
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
@@ -21,6 +27,8 @@ const App = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState('');
   const [addressSpoofing, setAddressSpoofing] = useState(false);
+  const [showSessionList, setShowSessionList] = useState(false);
+  const [sessionAddresses, setSessionAddresses] = useState<SessionAddress[]>([]);
 
   useEffect(() => {
     loadExistingWallet();
@@ -211,7 +219,7 @@ const App = () => {
               PrivatePay Wallet
             </h3>
             
-            <div style={{ marginBottom: '15px' }}>
+            {/* <div style={{ marginBottom: '15px' }}>
               <strong style={{ color: '#495057' }}>Master Address:</strong>
               <div style={{ 
                 marginTop: '5px',
@@ -225,7 +233,7 @@ const App = () => {
               }}>
                 {walletInfo.masterAddress}
               </div>
-            </div>
+            </div> */}
             
             {walletInfo.currentSessionAddress && (
               <div style={{ marginBottom: '15px' }}>
