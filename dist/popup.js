@@ -36973,7 +36973,7 @@
           fontFamily: "Arial, sans-serif",
           backgroundColor: "white"
         }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { style: { margin: "0 0 20px 0", color: "#333" }, children: "Welcome to PrivatePay" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { style: { margin: "0 0 20px 0", color: "#333", textAlign: "center" }, children: "Welcome to PrivatePay" }),
           !walletInfo ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: "15px" }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: { display: "block", marginBottom: "5px", color: "#666" }, children: "Enter 12-word seed phrase:" }),

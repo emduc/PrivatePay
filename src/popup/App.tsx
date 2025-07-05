@@ -193,7 +193,7 @@ const App = () => {
       fontFamily: 'Arial, sans-serif',
       backgroundColor: 'white'
     }}>
-      <h2 style={{ margin: '0 0 20px 0', color: '#333' }}>
+      <h2 style={{ margin: '0 0 20px 0', color: '#333', textAlign: 'center' }}>
         Welcome to PrivatePay
       </h2>
       
