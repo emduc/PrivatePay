@@ -3,9 +3,10 @@
   "name": "Mini ETH Wallet",
   "version": "0.0.1",
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": "icon32.png"
   },
-  "permissions": ["storage", "scripting"],
+  "permissions": ["storage", "scripting", "notifications"],
   "background": {
     "service_worker": "background.js"
   },

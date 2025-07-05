@@ -24528,11 +24528,14 @@
       var masterWallet = null;
       var currentSessionWallet = null;
       var sessionCounter = 0;
+      var currentChainId = "0xaa36a7";
+      var currentNetworkVersion = "11155111";
+      var pendingTransactions = /* @__PURE__ */ new Map();
       var initializeMasterWallet = async () => {
         try {
           const result = await chrome.storage.local.get(["seedPhrase"]);
           if (result.seedPhrase) {
-            masterWallet = ethers_exports.Wallet.fromPhrase(result.seedPhrase);
+            masterWallet = ethers_exports.HDNodeWallet.fromPhrase(result.seedPhrase);
             console.log("Master wallet initialized from seed phrase");
             const sessionResult = await chrome.storage.local.get(["sessionCounter"]);
             sessionCounter = sessionResult.sessionCounter || 0;
@@ -24549,13 +24552,13 @@
         sessionCounter++;
         await chrome.storage.local.set({ sessionCounter });
         const derivationPath = `m/44'/60'/0'/0/${sessionCounter}`;
-        const hdNode = ethers_exports.HDNodeWallet.fromPhrase(masterWallet.mnemonic.phrase, void 0, derivationPath);
-        currentSessionWallet = new ethers_exports.Wallet(hdNode.privateKey);
+        currentSessionWallet = ethers_exports.HDNodeWallet.fromPhrase(masterWallet.mnemonic.phrase, void 0, derivationPath);
         console.log(`Generated fresh session wallet #${sessionCounter}:`, currentSessionWallet.address);
         return currentSessionWallet;
       };
       initializeMasterWallet();
-      chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+        console.log("\u{1F3AF} Background received message:", msg.type, msg);
         (async () => {
           try {
             if (msg.type === "connect") {
@@ -24596,19 +24599,49 @@
                 return;
               }
               const { txParams } = msg;
+              const txId = Date.now().toString();
+              console.log("\u{1F525} TRANSACTION CONFIRMATION REQUIRED \u{1F525}");
+              console.log("Transaction ID:", txId);
+              console.log("Raw Transaction Params:", txParams);
+              console.log("Formatted Transaction Details:", {
+                to: txParams.to,
+                value: txParams.value ? ethers_exports.formatEther(txParams.value) + " ETH" : "0 ETH",
+                gasLimit: txParams.gasLimit,
+                gasPrice: txParams.gasPrice,
+                data: txParams.data || "None",
+                from: currentSessionWallet.address,
+                dataLength: txParams.data ? txParams.data.length : 0,
+                isContractCall: txParams.data && txParams.data !== "0x"
+              });
+              const pendingTx = new Promise((resolve, reject) => {
+                pendingTransactions.set(txId, {
+                  txParams,
+                  resolve,
+                  reject,
+                  timestamp: Date.now()
+                });
+              });
               try {
-                const provider = new ethers_exports.JsonRpcProvider("https://mainnet.infura.io/v3/YOUR_INFURA_KEY");
-                const connectedWallet = currentSessionWallet.connect(provider);
-                const tx = await connectedWallet.sendTransaction(txParams);
-                sendResponse(tx.hash);
-              } catch (error) {
-                sendResponse({ error: "Failed to send transaction" });
+                chrome.notifications.create({
+                  type: "basic",
+                  iconUrl: "icon32.png",
+                  title: "PrivatePay Transaction",
+                  message: `Open extension to confirm transaction`
+                });
+              } catch (e) {
+                console.log("Notification permission not granted");
               }
+              pendingTx.then((result) => {
+                sendResponse(result);
+              }).catch((error) => {
+                sendResponse({ error: error.message });
+              });
+              return true;
             }
             if (msg.type === "importWallet") {
               const { seedPhrase } = msg;
               try {
-                const testWallet = ethers_exports.Wallet.fromPhrase(seedPhrase);
+                const testWallet = ethers_exports.HDNodeWallet.fromPhrase(seedPhrase);
                 await chrome.storage.local.set({
                   seedPhrase,
                   sessionCounter: 0
@@ -24635,6 +24668,129 @@
                 currentSessionAddress: currentSessionWallet?.address || null,
                 sessionCount: sessionCounter
               });
+            }
+            if (msg.type === "getChainId") {
+              sendResponse(currentChainId);
+            }
+            if (msg.type === "getNetworkVersion") {
+              sendResponse(currentNetworkVersion);
+            }
+            if (msg.type === "switchChain") {
+              const { chainId } = msg;
+              console.log("Background: Switching to chain:", chainId);
+              currentChainId = chainId;
+              if (chainId === "0x1") {
+                currentNetworkVersion = "1";
+              } else if (chainId === "0xaa36a7" || chainId === "0x11155111") {
+                currentNetworkVersion = "11155111";
+              } else {
+                currentNetworkVersion = parseInt(chainId, 16).toString();
+              }
+              console.log("Chain switched to:", currentChainId, "Network version:", currentNetworkVersion);
+              sendResponse(null);
+            }
+            if (msg.type === "getBalance") {
+              const { address } = msg;
+              console.log("\u{1F4B0} Background: Balance requested for:", address);
+              if (currentSessionWallet && address?.toLowerCase() === currentSessionWallet.address.toLowerCase()) {
+                const fakeBalance = "0x56bc75e2d630e0000";
+                console.log("\u{1F48E} Returning fake balance for session wallet:", fakeBalance);
+                sendResponse(fakeBalance);
+              } else {
+                const fakeBalance = "0x8ac7230489e80000";
+                console.log("\u{1F4B0} Returning fake balance for other address:", fakeBalance);
+                sendResponse(fakeBalance);
+              }
+            }
+            if (msg.type === "getPendingTransactions") {
+              const pending = Array.from(pendingTransactions.entries()).map(([id2, tx]) => ({
+                id: id2,
+                txParams: tx.txParams,
+                timestamp: tx.timestamp,
+                from: currentSessionWallet?.address
+              }));
+              sendResponse(pending);
+            }
+            if (msg.type === "approveTransaction") {
+              const { txId } = msg;
+              const pendingTx = pendingTransactions.get(txId);
+              if (!pendingTx) {
+                sendResponse({ error: "Transaction not found" });
+                return;
+              }
+              console.log("\u{1F680} Starting real transaction submission...");
+              console.log("Transaction ID:", txId);
+              console.log("Session Wallet Address:", currentSessionWallet?.address);
+              try {
+                const provider = new ethers_exports.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
+                console.log("\u{1F4E1} Connected to provider:", provider);
+                if (!currentSessionWallet) {
+                  throw new Error("No session wallet available");
+                }
+                const connectedWallet = currentSessionWallet.connect(provider);
+                console.log("\u{1F517} Wallet connected to provider");
+                const txRequest = {
+                  to: pendingTx.txParams.to,
+                  value: pendingTx.txParams.value || "0x0",
+                  data: pendingTx.txParams.data || "0x",
+                  // Let ethers.js estimate gas if not provided
+                  ...pendingTx.txParams.gasLimit && { gasLimit: pendingTx.txParams.gasLimit },
+                  ...pendingTx.txParams.gasPrice && { gasPrice: pendingTx.txParams.gasPrice },
+                  ...pendingTx.txParams.maxFeePerGas && { maxFeePerGas: pendingTx.txParams.maxFeePerGas },
+                  ...pendingTx.txParams.maxPriorityFeePerGas && { maxPriorityFeePerGas: pendingTx.txParams.maxPriorityFeePerGas },
+                  // Let provider determine nonce
+                  nonce: await provider.getTransactionCount(connectedWallet.address)
+                };
+                console.log("\u{1F4DD} Transaction request prepared:", txRequest);
+                if (!pendingTx.txParams.gasLimit) {
+                  try {
+                    const estimatedGas = await provider.estimateGas(txRequest);
+                    console.log("\u26FD Estimated gas:", estimatedGas.toString());
+                    txRequest.gasLimit = estimatedGas;
+                  } catch (gasError) {
+                    console.warn("\u26A0\uFE0F Gas estimation failed, using default:", gasError.message);
+                  }
+                }
+                console.log("\u{1F4E4} Sending transaction to network...");
+                const txResponse = await connectedWallet.sendTransaction(txRequest);
+                console.log("\u2705 Transaction submitted! Hash:", txResponse.hash);
+                console.log("\u{1F50D} View on Etherscan:", `https://sepolia.etherscan.io/tx/${txResponse.hash}`);
+                pendingTx.resolve(txResponse.hash);
+                pendingTransactions.delete(txId);
+                console.log("\u23F3 Waiting for confirmation...");
+                txResponse.wait().then((receipt) => {
+                  if (receipt) {
+                    console.log("\u{1F389} Transaction confirmed!", receipt);
+                    console.log("Gas used:", receipt.gasUsed.toString());
+                    console.log("Block number:", receipt.blockNumber);
+                  }
+                }).catch((error) => {
+                  console.error("\u274C Transaction failed:", error);
+                });
+                sendResponse({ success: true, hash: txResponse.hash });
+              } catch (error) {
+                console.error("\u{1F4A5} Transaction submission failed:", error);
+                console.error("Error details:", {
+                  message: error?.message || "Unknown error",
+                  code: error?.code || "No code",
+                  stack: error?.stack || "No stack"
+                });
+                pendingTx.reject(error);
+                pendingTransactions.delete(txId);
+                sendResponse({ error: error?.message || "Transaction failed" });
+              }
+            }
+            if (msg.type === "rejectTransaction") {
+              const { txId } = msg;
+              const pendingTx = pendingTransactions.get(txId);
+              if (pendingTx) {
+                console.log("\u274C Transaction rejected");
+                pendingTx.reject(new Error("User rejected transaction"));
+                pendingTransactions.delete(txId);
+                sendResponse({ success: true });
+              } else {
+                sendResponse({ error: "Transaction not found" });
+              }
             }
           } catch (error) {
             console.error("Background script error:", error);

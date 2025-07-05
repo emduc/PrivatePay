@@ -7,9 +7,17 @@ interface WalletInfo {
   sessionCount: number;
 }
 
+interface PendingTransaction {
+  id: string;
+  txParams: any;
+  timestamp: number;
+  from: string;
+}
+
 const App = () => {
   const [mnemonic, setMnemonic] = useState('');
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
+  const [pendingTransactions, setPendingTransactions] = useState<PendingTransaction[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState('');
 
@@ -23,8 +31,40 @@ const App = () => {
       if (response && !response.error) {
         setWalletInfo(response);
       }
+      await loadPendingTransactions();
     } catch (err) {
       console.error('Error loading wallet:', err);
+    }
+  };
+
+  const loadPendingTransactions = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'getPendingTransactions' });
+      if (response && Array.isArray(response)) {
+        setPendingTransactions(response);
+      }
+    } catch (err) {
+      console.error('Error loading pending transactions:', err);
+    }
+  };
+
+  const approveTransaction = async (txId: string) => {
+    try {
+      console.log('🚀 Popup: Approving transaction:', txId);
+      const response = await chrome.runtime.sendMessage({ type: 'approveTransaction', txId });
+      console.log('📨 Popup: Response from background:', response);
+      await loadPendingTransactions(); // Refresh the list
+    } catch (err) {
+      console.error('Error approving transaction:', err);
+    }
+  };
+
+  const rejectTransaction = async (txId: string) => {
+    try {
+      await chrome.runtime.sendMessage({ type: 'rejectTransaction', txId });
+      await loadPendingTransactions(); // Refresh the list
+    } catch (err) {
+      console.error('Error rejecting transaction:', err);
     }
   };
 
@@ -200,6 +240,78 @@ const App = () => {
               a new address will be generated for enhanced privacy.
             </p>
           </div>
+
+          {pendingTransactions.length > 0 && (
+            <div style={{ 
+              marginBottom: '15px',
+              padding: '15px',
+              backgroundColor: '#fff3cd',
+              border: '2px solid #ff6b35',
+              borderRadius: '4px'
+            }}>
+              <h4 style={{ margin: '0 0 15px 0', color: '#d63384' }}>
+                🔥 Pending Transactions ({pendingTransactions.length})
+              </h4>
+              
+              {pendingTransactions.map((tx) => (
+                <div key={tx.id} style={{ 
+                  marginBottom: '15px',
+                  padding: '12px',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #dee2e6',
+                  borderRadius: '4px'
+                }}>
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong>To:</strong> 
+                    <div style={{ fontSize: '11px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                      {tx.txParams.to}
+                    </div>
+                  </div>
+                  
+                  <div style={{ marginBottom: '8px' }}>
+                    <strong>Value:</strong> {tx.txParams.value ? ethers.formatEther(tx.txParams.value) + ' ETH' : '0 ETH'}
+                  </div>
+                  
+                  <div style={{ marginBottom: '12px', fontSize: '11px', color: '#6c757d' }}>
+                    Gas Limit: {tx.txParams.gasLimit || 'Not set'}
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => approveTransaction(tx.id)}
+                      style={{
+                        flex: 1,
+                        padding: '8px',
+                        backgroundColor: '#28a745',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      ✅ Approve
+                    </button>
+                    <button
+                      onClick={() => rejectTransaction(tx.id)}
+                      style={{
+                        flex: 1,
+                        padding: '8px',
+                        backgroundColor: '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      ❌ Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           
           <button
             onClick={clearWallet}

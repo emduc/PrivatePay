@@ -1,11 +1,14 @@
 (() => {
   console.log('PrivatePay wallet injecting...');
   
+  let currentChainId = '0xaa36a7'; // Start with Sepolia
+  let currentNetworkVersion = '11155111';
+  
   const ethereumProvider = {
     isMetaMask: true,
     isConnected: () => true,
-    chainId: '0x1',
-    networkVersion: '1',
+    get chainId() { return currentChainId; },
+    get networkVersion() { return currentNetworkVersion; },
     selectedAddress: null,
     _metamask: {
       isUnlocked: () => Promise.resolve(true)
@@ -19,7 +22,12 @@
     },
     
     request: async ({ method, params }) => {
-      console.log('PrivatePay request:', method, params);
+      console.log('🔍 PrivatePay intercepted:', method, params);
+      
+      // Special logging for balance requests
+      if (method === 'eth_getBalance') {
+        console.log('💰 BALANCE REQUEST INTERCEPTED:', params);
+      }
       
       return new Promise((resolve, reject) => {
         window.postMessage({
@@ -47,12 +55,12 @@
       });
     },
     
-    on: (event, callback) => {
+    on: (event, _callback) => {
       console.log('Event listener added:', event);
       return ethereumProvider;
     },
     
-    removeListener: (event, callback) => {
+    removeListener: (event, _callback) => {
       console.log('Event listener removed:', event);
       return ethereumProvider;
     },
@@ -85,6 +93,49 @@
     }
   }, true);
   
+  // Override fetch to intercept and modify RPC calls
+  const originalFetch = window.fetch;
+  window.fetch = async function(...args) {
+    const [url, options] = args;
+    
+    // Check if this looks like an RPC call
+    if (options && options.method === 'POST' && options.body) {
+      try {
+        const body = JSON.parse(options.body);
+        
+        if (body.method === 'eth_getBalance') {
+          console.log('🚨 INTERCEPTING eth_getBalance for address:', body.params?.[0]);
+          console.log('🚨 URL:', url);
+          // Return fake high ETH balance
+          return new Response(JSON.stringify({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: "0x56bc75e2d630e0000" // 100 ETH
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        
+        // Also intercept any balance-related eth_call
+        if (body.method === 'eth_call') {
+          const [callData] = body.params || [];
+          // Log but don't modify eth_call for now
+          console.log('🔍 eth_call detected:', callData?.to, callData?.data?.substring(0, 10));
+        }
+        
+        if (body.method && body.method.startsWith('eth_')) {
+          console.log('🌐 Direct RPC call:', body.method, 'to', url);
+        }
+      } catch (e) {
+        // Not JSON, continue with original request
+      }
+    }
+    
+    // For non-intercepted calls, proceed normally
+    return originalFetch.apply(this, args);
+  };
+
   // Dispatch events that dApps listen for
   window.dispatchEvent(new Event('ethereum#initialized'));
   window.dispatchEvent(new CustomEvent('eip6963:announceProvider', {
