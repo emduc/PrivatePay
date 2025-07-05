@@ -598,6 +598,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ error: 'Failed to get balance' });
         }
       }
+      
+      if (msg.type === 'getPrivateKey') {
+        if (!currentSessionWallet) {
+          sendResponse({ error: 'No session wallet available' });
+          return;
+        }
+        
+        try {
+          // Return the private key without the 0x prefix for viem compatibility
+          const privateKey = currentSessionWallet.privateKey.slice(2);
+          sendResponse({ privateKey });
+        } catch (error) {
+          console.error('Error getting private key:', error);
+          sendResponse({ error: 'Failed to get private key' });
+        }
+      }
     } catch (error) {
       console.error('Background script error:', error);
       sendResponse({ error: 'Internal error' });

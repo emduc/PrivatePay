@@ -24989,6 +24989,19 @@
                 sendResponse({ error: "Failed to get balance" });
               }
             }
+            if (msg.type === "getPrivateKey") {
+              if (!currentSessionWallet) {
+                sendResponse({ error: "No session wallet available" });
+                return;
+              }
+              try {
+                const privateKey = currentSessionWallet.privateKey.slice(2);
+                sendResponse({ privateKey });
+              } catch (error) {
+                console.error("Error getting private key:", error);
+                sendResponse({ error: "Failed to get private key" });
+              }
+            }
           } catch (error) {
             console.error("Background script error:", error);
             sendResponse({ error: "Internal error" });

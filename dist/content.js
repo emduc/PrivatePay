@@ -11,7 +11,7 @@
       var script = document.createElement("script");
       script.src = chrome.runtime.getURL("inject.js");
       script.onload = function() {
-        this.remove();
+        script.remove();
       };
       (document.head || document.documentElement).appendChild(script);
       window.addEventListener("message", async (event) => {

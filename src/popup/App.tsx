@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
+import { useCCIPTransfer } from '../hooks/useCCIPTransfer';
+import { CCIPSupportedChainId, CCIP_CHAIN_ID_TO_NAME } from '../lib/ccipChains';
 
 
 interface WalletInfo {
@@ -27,10 +29,26 @@ const App = () => {
   const [pendingTransactions, setPendingTransactions] = useState<PendingTransaction[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState('');
-  const [addressSpoofing, setAddressSpoofing] = useState(false);
+  const [addressSpoofing, setAddressSpoofing] = useState(true);
   const [showSessionList, setShowSessionList] = useState(false);
   const [sessionAddresses, setSessionAddresses] = useState<SessionAddress[]>([]);
   const [masterBalance, setMasterBalance] = useState<string>('0');
+  const [showPayUSDC, setShowPayUSDC] = useState(false);
+  const [showPaymentOverview, setShowPaymentOverview] = useState(false);
+  const [paymentForm, setPaymentForm] = useState<{
+    destinationAddress: string;
+    amount: string;
+    destinationChain: CCIPSupportedChainId;
+    tokenType: "USDC" | "CCIP-BnM";
+  }>({
+    destinationAddress: '',
+    amount: '',
+    destinationChain: CCIPSupportedChainId.ETH_SEPOLIA,
+    tokenType: "USDC"
+  });
+  const [estimatedGasCost, setEstimatedGasCost] = useState('0.0023');
+  
+  const { currentStep, logs, error: transferError, messageId, executeCCIPTransfer, reset } = useCCIPTransfer();
 
   useEffect(() => {
     loadExistingWallet();
@@ -52,7 +70,7 @@ const App = () => {
   const loadAddressSpoofing = async () => {
     try {
       const result = await chrome.storage.local.get(['addressSpoofing']);
-      setAddressSpoofing(result.addressSpoofing || false);
+      setAddressSpoofing(result.addressSpoofing || true);
     } catch (err) {
       console.error('Error loading address spoofing setting:', err);
     }
@@ -316,7 +334,12 @@ const App = () => {
                   </span>
                 </div>
                 <div 
-                  onClick={() => openEtherscan(walletInfo.currentSessionAddress!)}
+                  onClick={() => {
+                    setShowSessionList(!showSessionList);
+                    if (!showSessionList) {
+                      loadSessionAddresses();
+                    }
+                  }}
                   style={{ 
                     marginTop: '5px',
                     wordBreak: 'break-all',
@@ -338,7 +361,7 @@ const App = () => {
                     e.currentTarget.style.backgroundColor = '#d4edda';
                     e.currentTarget.style.borderColor = 'transparent';
                   }}
-                  title="Click to view on Etherscan"
+                  title="Click to toggle session list"
                 >
                   {walletInfo.currentSessionAddress}
                 </div>
@@ -359,17 +382,23 @@ const App = () => {
                       borderBottom: '1px solid #dee2e6',
                       backgroundColor: '#e9ecef'
                     }}>
-                      Previous Sessions (click to switch)
+                      Previous Sessions
                     </div>
                     {sessionAddresses.length > 0 ? (
                       sessionAddresses.map((session) => (
                         <div
                           key={session.sessionNumber}
+                          onClick={() => {
+                            if (!session.isCurrent) {
+                              switchToSession(session.sessionNumber);
+                            }
+                          }}
                           style={{
                             padding: '8px',
                             borderBottom: '1px solid #dee2e6',
                             backgroundColor: session.isCurrent ? '#d4edda' : 'transparent',
-                            transition: 'background-color 0.2s'
+                            transition: 'background-color 0.2s',
+                            cursor: session.isCurrent ? 'default' : 'pointer'
                           }}
                           onMouseEnter={(e) => {
                             if (!session.isCurrent) {
@@ -407,43 +436,18 @@ const App = () => {
                               >
                                 📊
                               </span>
-                              {!session.isCurrent && (
-                                <span 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    switchToSession(session.sessionNumber);
-                                  }}
-                                  style={{ 
-                                    cursor: 'pointer', 
-                                    color: '#28a745',
-                                    fontSize: '10px',
-                                    textDecoration: 'underline'
-                                  }}
-                                  title="Switch to this session"
-                                >
-                                  🔄
-                                </span>
-                              )}
                             </div>
                           </div>
                           <div 
-                            onClick={() => openEtherscan(session.address)}
                             style={{
                               fontSize: '10px',
                               fontFamily: 'monospace',
                               wordBreak: 'break-all',
                               color: '#495057',
-                              cursor: 'pointer',
                               padding: '2px',
                               borderRadius: '2px'
                             }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = '#f8f9fa';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = 'transparent';
-                            }}
-                            title="Click to view on Etherscan"
+                            title={session.isCurrent ? "Current session" : "Click to switch to this session"}
                           >
                             {session.address}
                           </div>
@@ -466,6 +470,497 @@ const App = () => {
             <div style={{ fontSize: '12px', color: '#6c757d', marginTop: '5px' }}>
               Available: <strong style={{ color: '#28a745' }}>{masterBalance} ETH</strong>
             </div>
+          </div>
+
+          {/* Pay USDC Section */}
+          <div style={{ 
+            marginBottom: '20px',
+            textAlign: 'center'
+          }}>
+            {!showPayUSDC ? (
+              <button
+                onClick={() => setShowPayUSDC(true)}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#2775ca',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  margin: '0 auto',
+                  boxShadow: '0 2px 8px rgba(39, 117, 202, 0.3)',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#1e5a96';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(39, 117, 202, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#2775ca';
+                  e.currentTarget.style.transform = 'translateY(0px)';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(39, 117, 202, 0.3)';
+                }}
+              >
+                <img 
+                  src="usdc-logo.png" 
+                  alt="USDC" 
+                  style={{ 
+                    width: '20px', 
+                    height: '20px',
+                    borderRadius: '50%'
+                  }} 
+                />
+                Pay
+              </button>
+            ) : (
+              <div style={{
+                padding: '20px',
+                backgroundColor: '#f8f9fa',
+                border: '1px solid #e9ecef',
+                borderRadius: '8px',
+                textAlign: 'left'
+              }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  marginBottom: '15px'
+                }}>
+                  <h4 style={{ 
+                    margin: 0, 
+                    color: '#333', 
+                    fontSize: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <img 
+                      src="usdc-logo.png" 
+                      alt="USDC" 
+                      style={{ 
+                        width: '16px', 
+                        height: '16px',
+                        borderRadius: '50%'
+                      }} 
+                    />
+                    Pay
+                  </h4>
+                  <span
+                    onClick={() => setShowPayUSDC(false)}
+                    style={{
+                      cursor: 'pointer',
+                      color: '#6c757d',
+                      fontSize: '18px',
+                      lineHeight: '1'
+                    }}
+                  >
+                    ×
+                  </span>
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '4px', 
+                    fontSize: '12px', 
+                    color: '#666',
+                    fontWeight: '500'
+                  }}>
+                    Token Type
+                  </label>
+                  <select
+                    value={paymentForm.tokenType}
+                    onChange={(e) => setPaymentForm({
+                      ...paymentForm,
+                      tokenType: e.target.value as "USDC" | "CCIP-BnM"
+                    })}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      backgroundColor: 'white',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    <option value="USDC">USDC</option>
+                    <option value="CCIP-BnM">CCIP-BnM (Test Token)</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '4px', 
+                    fontSize: '12px', 
+                    color: '#666',
+                    fontWeight: '500'
+                  }}>
+                    Destination Address
+                  </label>
+                  <input
+                    type="text"
+                    value={paymentForm.destinationAddress}
+                    onChange={(e) => setPaymentForm({
+                      ...paymentForm,
+                      destinationAddress: e.target.value
+                    })}
+                    placeholder="0x1234..."
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      fontFamily: 'monospace',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '4px', 
+                    fontSize: '12px', 
+                    color: '#666',
+                    fontWeight: '500'
+                  }}>
+                    Amount ({paymentForm.tokenType})
+                  </label>
+                  <input
+                    type="number"
+                    value={paymentForm.amount}
+                    onChange={(e) => setPaymentForm({
+                      ...paymentForm,
+                      amount: e.target.value
+                    })}
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0"
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '4px', 
+                    fontSize: '12px', 
+                    color: '#666',
+                    fontWeight: '500'
+                  }}>
+                    Destination Chain
+                  </label>
+                  <select
+                    value={paymentForm.destinationChain}
+                    onChange={(e) => setPaymentForm({
+                      ...paymentForm,
+                      destinationChain: parseInt(e.target.value) as CCIPSupportedChainId
+                    })}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      backgroundColor: 'white',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    <option value={CCIPSupportedChainId.ETH_SEPOLIA}>Ethereum Sepolia</option>
+                    <option value={CCIPSupportedChainId.BASE_SEPOLIA}>Base Sepolia</option>
+                    <option value={CCIPSupportedChainId.ARB_SEPOLIA}>Arbitrum Sepolia</option>
+                    <option value={CCIPSupportedChainId.AVAX_FUJI}>Avalanche Fuji</option>
+                    <option value={CCIPSupportedChainId.POLYGON_AMOY}>Polygon Amoy</option>
+                    <option value={CCIPSupportedChainId.RONIN_SAIGON}>Ronin Saigon</option>
+                  </select>
+                </div>
+
+                {!showPaymentOverview ? (
+                  <button
+                    onClick={() => {
+                      setShowPaymentOverview(true);
+                    }}
+                    disabled={!paymentForm.destinationAddress || !paymentForm.amount}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      backgroundColor: (!paymentForm.destinationAddress || !paymentForm.amount) ? '#6c757d' : '#007bff',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: (!paymentForm.destinationAddress || !paymentForm.amount) ? 'not-allowed' : 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '600'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (paymentForm.destinationAddress && paymentForm.amount) {
+                        e.currentTarget.style.backgroundColor = '#0056b3';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (paymentForm.destinationAddress && paymentForm.amount) {
+                        e.currentTarget.style.backgroundColor = '#007bff';
+                      }
+                    }}
+                  >
+                    Overview
+                  </button>
+                ) : (
+                  <div>
+                    {/* Payment Overview */}
+                    <div style={{
+                      backgroundColor: '#e7f3ff',
+                      border: '1px solid #bee5eb',
+                      borderRadius: '4px',
+                      padding: '12px',
+                      marginBottom: '12px'
+                    }}>
+                      <h5 style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#0c5460' }}>
+                        Payment Overview
+                      </h5>
+                      
+                      <div style={{ fontSize: '11px', marginBottom: '4px' }}>
+                        <span style={{ color: '#6c757d' }}>To:</span>
+                        <div style={{ 
+                          fontFamily: 'monospace', 
+                          wordBreak: 'break-all',
+                          fontSize: '10px',
+                          marginTop: '2px'
+                        }}>
+                          {paymentForm.destinationAddress}
+                        </div>
+                      </div>
+                      
+                      <div style={{ fontSize: '11px', marginBottom: '4px' }}>
+                        <span style={{ color: '#6c757d' }}>Amount:</span>
+                        <span style={{ marginLeft: '8px', fontWeight: '600' }}>
+                          {paymentForm.amount} {paymentForm.tokenType}
+                        </span>
+                      </div>
+                      
+                      <div style={{ fontSize: '11px', marginBottom: '4px' }}>
+                        <span style={{ color: '#6c757d' }}>Chain:</span>
+                        <span style={{ marginLeft: '8px' }}>
+                          {CCIP_CHAIN_ID_TO_NAME[paymentForm.destinationChain] || 'Unknown Chain'}
+                        </span>
+                      </div>
+                      
+                      <div style={{ fontSize: '11px', marginBottom: '0' }}>
+                        <span style={{ color: '#6c757d' }}>Estimated Cost:</span>
+                        <span style={{ marginLeft: '8px', fontWeight: '600', color: '#dc3545' }}>
+                          ~0.0023 ETH
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => setShowPaymentOverview(false)}
+                        style={{
+                          flex: 1,
+                          padding: '10px',
+                          backgroundColor: '#6c757d',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          fontWeight: '600'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#545b62';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#6c757d';
+                        }}
+                      >
+                        Back
+                      </button>
+                      
+                      <button
+                        onClick={async () => {
+                          if (!walletInfo?.currentSessionAddress) {
+                            console.error('No session address available');
+                            return;
+                          }
+                          
+                          try {
+                            // Get private key from background script
+                            const response = await chrome.runtime.sendMessage({ type: 'getPrivateKey' });
+                            if (response.error) {
+                              console.error('Failed to get private key:', response.error);
+                              return;
+                            }
+                            
+                            // Execute the CCIP cross-chain transfer
+                            await executeCCIPTransfer(
+                              response.privateKey,
+                              CCIPSupportedChainId.ETH_SEPOLIA, // Source chain (assuming current session is on Sepolia)
+                              paymentForm.destinationChain,
+                              paymentForm.destinationAddress,
+                              paymentForm.amount,
+                              paymentForm.tokenType
+                            );
+                          } catch (error) {
+                            console.error('Payment failed:', error);
+                          }
+                        }}
+                        disabled={currentStep !== 'idle' && currentStep !== 'completed' && currentStep !== 'error'}
+                        style={{
+                          flex: 1,
+                          padding: '10px',
+                          backgroundColor: (currentStep !== 'idle' && currentStep !== 'completed' && currentStep !== 'error') ? '#6c757d' : '#28a745',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: (currentStep !== 'idle' && currentStep !== 'completed' && currentStep !== 'error') ? 'not-allowed' : 'pointer',
+                          fontSize: '13px',
+                          fontWeight: '600'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (currentStep === 'idle' || currentStep === 'completed' || currentStep === 'error') {
+                            e.currentTarget.style.backgroundColor = '#218838';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (currentStep === 'idle' || currentStep === 'completed' || currentStep === 'error') {
+                            e.currentTarget.style.backgroundColor = '#28a745';
+                          }
+                        }}
+                      >
+                        {currentStep === 'idle' ? 'Confirm Payment' : 
+                         currentStep === 'completed' ? 'Payment Complete' :
+                         currentStep === 'error' ? 'Retry Payment' :
+                         'Processing...'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Payment Status Display */}
+                {(currentStep !== 'idle' || logs.length > 0) && (
+                  <div style={{
+                    marginTop: '15px',
+                    padding: '12px',
+                    backgroundColor: currentStep === 'error' ? '#f8d7da' : '#e7f3ff',
+                    border: `1px solid ${currentStep === 'error' ? '#f5c6cb' : '#bee5eb'}`,
+                    borderRadius: '4px'
+                  }}>
+                    <h5 style={{ 
+                      margin: '0 0 8px 0', 
+                      fontSize: '12px', 
+                      color: currentStep === 'error' ? '#721c24' : '#0c5460',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      Payment Status
+                      {(currentStep === 'completed' || currentStep === 'error') && (
+                        <button
+                          onClick={() => {
+                            reset();
+                            setShowPaymentOverview(false);
+                          }}
+                          style={{
+                            fontSize: '10px',
+                            padding: '2px 6px',
+                            backgroundColor: '#6c757d',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '2px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </h5>
+                    
+                    <div style={{ 
+                      fontSize: '11px', 
+                      color: currentStep === 'error' ? '#721c24' : '#0c5460',
+                      marginBottom: '8px',
+                      fontWeight: '600'
+                    }}>
+                      Current Step: {currentStep === 'idle' ? 'Ready' : 
+                                   currentStep === 'approving-token' ? `Approving ${paymentForm.tokenType}` :
+                                   currentStep === 'estimating-fees' ? 'Estimating CCIP Fees' :
+                                   currentStep === 'transferring' ? 'Initiating CCIP Transfer' :
+                                   currentStep === 'waiting-confirmation' ? 'Waiting for Confirmation' :
+                                   currentStep === 'completed' ? '✅ Completed' :
+                                   currentStep === 'error' ? '❌ Error' : currentStep}
+                    </div>
+
+                    {messageId && (
+                      <div style={{
+                        fontSize: '10px',
+                        color: '#0c5460',
+                        backgroundColor: '#e7f3ff',
+                        border: '1px solid #bee5eb',
+                        padding: '6px',
+                        borderRadius: '3px',
+                        marginBottom: '8px',
+                        wordBreak: 'break-all'
+                      }}>
+                        <strong>CCIP Message ID:</strong><br />
+                        {messageId}
+                        <br />
+                        <small>Track on <a href={`https://ccip.chain.link/msg/${messageId}`} target="_blank" rel="noopener noreferrer" style={{color: '#007bff'}}>CCIP Explorer</a></small>
+                      </div>
+                    )}
+
+                    {transferError && (
+                      <div style={{
+                        fontSize: '10px',
+                        color: '#721c24',
+                        backgroundColor: '#f8d7da',
+                        border: '1px solid #f5c6cb',
+                        padding: '6px',
+                        borderRadius: '3px',
+                        marginBottom: '8px'
+                      }}>
+                        Error: {transferError}
+                      </div>
+                    )}
+
+                    {logs.length > 0 && (
+                      <div style={{
+                        maxHeight: '120px',
+                        overflowY: 'auto',
+                        fontSize: '9px',
+                        fontFamily: 'monospace',
+                        backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                        padding: '6px',
+                        borderRadius: '3px',
+                        border: '1px solid rgba(0, 0, 0, 0.1)'
+                      }}>
+                        {logs.map((log: string, index: number) => (
+                          <div key={index} style={{ marginBottom: '2px', lineHeight: '1.2' }}>
+                            {log}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           
           <div style={{ 
@@ -492,7 +987,7 @@ const App = () => {
                 htmlFor="addressSpoofing" 
                 style={{ fontSize: '12px', color: '#856404', cursor: 'pointer' }}
               >
-                <strong>🎭 Address Spoofing:</strong> Show fake rich address to dApps
+                <strong>🎭 Address Spoofing:</strong> Show fake rich address to dApps to enable actions.
               </label>
             </div>
           </div>
