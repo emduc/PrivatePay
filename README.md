@@ -1,6 +1,6 @@
 # PrivacyLinks
 
-**Privacy-First Web3 Browser Extension**
+**Privacy-by-default Web3 Browser Extension**
 
 PrivacyLinks is a browser extension that enables Web3 interactions with privacy by default. It provides fresh addresses for each transaction while ensuring funds come from private and provably non-malicious onchain sources through PrivacyPools integration.
 
