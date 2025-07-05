@@ -20,10 +20,32 @@ const App = () => {
   const [pendingTransactions, setPendingTransactions] = useState<PendingTransaction[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState('');
+  const [addressSpoofing, setAddressSpoofing] = useState(false);
 
   useEffect(() => {
     loadExistingWallet();
+    loadAddressSpoofing();
   }, []);
+
+  const loadAddressSpoofing = async () => {
+    try {
+      const result = await chrome.storage.local.get(['addressSpoofing']);
+      setAddressSpoofing(result.addressSpoofing || false);
+    } catch (err) {
+      console.error('Error loading address spoofing setting:', err);
+    }
+  };
+
+  const toggleAddressSpoofing = async () => {
+    const newValue = !addressSpoofing;
+    setAddressSpoofing(newValue);
+    try {
+      await chrome.storage.local.set({ addressSpoofing: newValue });
+      console.log('Address spoofing set to:', newValue);
+    } catch (err) {
+      console.error('Error saving address spoofing setting:', err);
+    }
+  };
 
   const loadExistingWallet = async () => {
     try {
@@ -235,10 +257,26 @@ const App = () => {
             border: '1px solid #ffeaa7',
             borderRadius: '4px'
           }}>
-            <p style={{ fontSize: '13px', color: '#856404', margin: '0' }}>
+            <p style={{ fontSize: '13px', color: '#856404', margin: '0 0 10px 0' }}>
               <strong>🔄 Fresh Address Mode:</strong> Each time you connect to a dApp, 
               a new address will be generated for enhanced privacy.
             </p>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                id="addressSpoofing"
+                checked={addressSpoofing}
+                onChange={toggleAddressSpoofing}
+                style={{ cursor: 'pointer' }}
+              />
+              <label 
+                htmlFor="addressSpoofing" 
+                style={{ fontSize: '12px', color: '#856404', cursor: 'pointer' }}
+              >
+                <strong>🎭 Address Spoofing:</strong> Show fake rich address (0xA6a49...83B5) to dApps
+              </label>
+            </div>
           </div>
 
           {pendingTransactions.length > 0 && (

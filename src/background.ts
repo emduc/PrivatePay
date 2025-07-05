@@ -6,6 +6,10 @@ let sessionCounter = 0;
 let currentChainId = '0xaa36a7'; // Sepolia testnet
 let currentNetworkVersion = '11155111';
 
+// Address spoofing constants
+const SPOOFED_ADDRESS = '0xA6a49d09321f701AB4295e5eB115E65EcF9b83B5';
+let addressSpoofingEnabled = false;
+
 // Transaction management
 let pendingTransactions: Map<string, {
   txParams: any;
@@ -16,14 +20,15 @@ let pendingTransactions: Map<string, {
 
 const initializeMasterWallet = async () => {
   try {
-    const result = await chrome.storage.local.get(['seedPhrase']);
+    const result = await chrome.storage.local.get(['seedPhrase', 'sessionCounter', 'addressSpoofing']);
     if (result.seedPhrase) {
       masterWallet = ethers.HDNodeWallet.fromPhrase(result.seedPhrase);
       console.log('Master wallet initialized from seed phrase');
       
-      // Load session counter
-      const sessionResult = await chrome.storage.local.get(['sessionCounter']);
-      sessionCounter = sessionResult.sessionCounter || 0;
+      // Load session counter and address spoofing setting
+      sessionCounter = result.sessionCounter || 0;
+      addressSpoofingEnabled = result.addressSpoofing || false;
+      console.log('Address spoofing enabled:', addressSpoofingEnabled);
     }
   } catch (error) {
     console.error('Error initializing master wallet:', error);
@@ -61,10 +66,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return;
         }
         
+        // Load current address spoofing setting
+        const spoofingResult = await chrome.storage.local.get(['addressSpoofing']);
+        addressSpoofingEnabled = spoofingResult.addressSpoofing || false;
+        
         // Generate fresh session wallet for each connection
         const sessionWallet = await generateFreshSessionWallet();
         if (sessionWallet) {
-          sendResponse(sessionWallet.address);
+          // Return spoofed address if enabled, otherwise real address
+          const addressToReturn = addressSpoofingEnabled ? SPOOFED_ADDRESS : sessionWallet.address;
+          console.log(`🎭 Returning address to dApp: ${addressToReturn} (spoofing: ${addressSpoofingEnabled})`);
+          sendResponse(addressToReturn);
         } else {
           sendResponse(null);
         }
@@ -72,7 +84,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       
       if (msg.type === 'getAccounts') {
         if (currentSessionWallet) {
-          sendResponse(currentSessionWallet.address);
+          // Load current address spoofing setting
+          const spoofingResult = await chrome.storage.local.get(['addressSpoofing']);
+          addressSpoofingEnabled = spoofingResult.addressSpoofing || false;
+          
+          // Return spoofed address if enabled, otherwise real address
+          const addressToReturn = addressSpoofingEnabled ? SPOOFED_ADDRESS : currentSessionWallet.address;
+          console.log(`🎭 getAccounts returning: ${addressToReturn} (spoofing: ${addressSpoofingEnabled})`);
+          sendResponse(addressToReturn);
         } else {
           sendResponse(null);
         }
@@ -99,8 +118,56 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return;
         }
         
-        const { txParams } = msg;
+        let { txParams } = msg;
         const txId = Date.now().toString();
+        
+        // Load current address spoofing setting
+        const spoofingResult = await chrome.storage.local.get(['addressSpoofing']);
+        addressSpoofingEnabled = spoofingResult.addressSpoofing || false;
+        
+        // If address spoofing is enabled, swap ALL mentions of spoofed address to real address
+        if (addressSpoofingEnabled && currentSessionWallet) {
+          const originalTxParams = JSON.stringify(txParams, null, 2);
+          
+          // Function to recursively replace spoofed address in any object/string
+          const replaceSpoofedAddress = (obj: any): any => {
+            if (typeof obj === 'string') {
+              if (obj.toLowerCase() === SPOOFED_ADDRESS.toLowerCase()) {
+                console.log(`🔄 Found spoofed address in string: ${obj} -> ${currentSessionWallet!.address}`);
+                return currentSessionWallet!.address;
+              }
+              // Also check if it's hex data containing the address (remove 0x prefix for comparison)
+              if (obj.startsWith('0x') && obj.toLowerCase().includes(SPOOFED_ADDRESS.toLowerCase().slice(2))) {
+                console.log(`🔄 Found spoofed address in hex data: ${obj}`);
+                const replaced = obj.replace(
+                  new RegExp(SPOOFED_ADDRESS.slice(2), 'gi'), 
+                  currentSessionWallet!.address.slice(2)
+                );
+                console.log(`   -> ${replaced}`);
+                return replaced;
+              }
+              return obj;
+            } else if (Array.isArray(obj)) {
+              return obj.map(replaceSpoofedAddress);
+            } else if (obj && typeof obj === 'object') {
+              const result: any = {};
+              for (const [key, value] of Object.entries(obj)) {
+                result[key] = replaceSpoofedAddress(value);
+              }
+              return result;
+            }
+            return obj;
+          };
+
+          txParams = replaceSpoofedAddress(txParams);
+          
+          const modifiedTxParams = JSON.stringify(txParams, null, 2);
+          if (originalTxParams !== modifiedTxParams) {
+            console.log(`🎭 SPOOFED ADDRESS REPLACEMENT COMPLETED`);
+            console.log(`   Original:`, originalTxParams);
+            console.log(`   Modified:`, modifiedTxParams);
+          }
+        }
         
         console.log('🔥 TRANSACTION CONFIRMATION REQUIRED 🔥');
         console.log('Transaction ID:', txId);

@@ -1,5 +1,7 @@
 (() => {
-  console.log('PrivatePay wallet injecting...');
+  console.log('🔥 PrivatePay wallet injecting at:', Date.now());
+  console.log('🔍 Current fetch function:', typeof window.fetch);
+  console.log('🔍 Current XMLHttpRequest:', typeof window.XMLHttpRequest);
   
   let currentChainId = '0xaa36a7'; // Start with Sepolia
   let currentNetworkVersion = '11155111';
@@ -93,48 +95,7 @@
     }
   }, true);
   
-  // Override fetch to intercept and modify RPC calls
-  const originalFetch = window.fetch;
-  window.fetch = async function(...args) {
-    const [url, options] = args;
-    
-    // Check if this looks like an RPC call
-    if (options && options.method === 'POST' && options.body) {
-      try {
-        const body = JSON.parse(options.body);
-        
-        if (body.method === 'eth_getBalance') {
-          console.log('🚨 INTERCEPTING eth_getBalance for address:', body.params?.[0]);
-          console.log('🚨 URL:', url);
-          // Return fake high ETH balance
-          return new Response(JSON.stringify({
-            jsonrpc: "2.0",
-            id: body.id,
-            result: "0x56bc75e2d630e0000" // 100 ETH
-          }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-        
-        // Also intercept any balance-related eth_call
-        if (body.method === 'eth_call') {
-          const [callData] = body.params || [];
-          // Log but don't modify eth_call for now
-          console.log('🔍 eth_call detected:', callData?.to, callData?.data?.substring(0, 10));
-        }
-        
-        if (body.method && body.method.startsWith('eth_')) {
-          console.log('🌐 Direct RPC call:', body.method, 'to', url);
-        }
-      } catch (e) {
-        // Not JSON, continue with original request
-      }
-    }
-    
-    // For non-intercepted calls, proceed normally
-    return originalFetch.apply(this, args);
-  };
+  console.log('🎭 Address spoofing feature available - use wallet toggle to enable');
 
   // Dispatch events that dApps listen for
   window.dispatchEvent(new Event('ethereum#initialized'));

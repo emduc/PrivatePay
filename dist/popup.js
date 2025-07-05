@@ -36825,9 +36825,29 @@
         const [pendingTransactions, setPendingTransactions] = (0, import_react.useState)([]);
         const [isImporting, setIsImporting] = (0, import_react.useState)(false);
         const [error, setError] = (0, import_react.useState)("");
+        const [addressSpoofing, setAddressSpoofing] = (0, import_react.useState)(false);
         (0, import_react.useEffect)(() => {
           loadExistingWallet();
+          loadAddressSpoofing();
         }, []);
+        const loadAddressSpoofing = async () => {
+          try {
+            const result = await chrome.storage.local.get(["addressSpoofing"]);
+            setAddressSpoofing(result.addressSpoofing || false);
+          } catch (err) {
+            console.error("Error loading address spoofing setting:", err);
+          }
+        };
+        const toggleAddressSpoofing = async () => {
+          const newValue = !addressSpoofing;
+          setAddressSpoofing(newValue);
+          try {
+            await chrome.storage.local.set({ addressSpoofing: newValue });
+            console.log("Address spoofing set to:", newValue);
+          } catch (err) {
+            console.error("Error saving address spoofing setting:", err);
+          }
+        };
         const loadExistingWallet = async () => {
           try {
             const response = await chrome.runtime.sendMessage({ type: "getWalletInfo" });
@@ -37001,16 +37021,41 @@
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: walletInfo.sessionCount })
               ] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
               marginBottom: "15px",
               padding: "12px",
               backgroundColor: "#fff3cd",
               border: "1px solid #ffeaa7",
               borderRadius: "4px"
-            }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { style: { fontSize: "13px", color: "#856404", margin: "0" }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u{1F504} Fresh Address Mode:" }),
-              " Each time you connect to a dApp, a new address will be generated for enhanced privacy."
-            ] }) }),
+            }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { style: { fontSize: "13px", color: "#856404", margin: "0 0 10px 0" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u{1F504} Fresh Address Mode:" }),
+                " Each time you connect to a dApp, a new address will be generated for enhanced privacy."
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "8px" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    type: "checkbox",
+                    id: "addressSpoofing",
+                    checked: addressSpoofing,
+                    onChange: toggleAddressSpoofing,
+                    style: { cursor: "pointer" }
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  "label",
+                  {
+                    htmlFor: "addressSpoofing",
+                    style: { fontSize: "12px", color: "#856404", cursor: "pointer" },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u{1F3AD} Address Spoofing:" }),
+                      " Show fake rich address (0xA6a49...83B5) to dApps"
+                    ]
+                  }
+                )
+              ] })
+            ] }),
             pendingTransactions.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
               marginBottom: "15px",
               padding: "15px",
