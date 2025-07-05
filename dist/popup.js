@@ -55122,7 +55122,7 @@ ${prettyStateOverride(stateOverride)}`;
           fontFamily: "Arial, sans-serif",
           backgroundColor: "white"
         }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { style: { margin: "0 0 20px 0", color: "#333", textAlign: "center" }, children: "Welcome to PrivatePay" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { style: { margin: "0 0 20px 0", color: "#333", textAlign: "center" }, children: "Welcome to PrivacyLinks" }),
           !walletInfo ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: "15px" }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { style: { display: "flex", alignItems: "center", gap: "6px", marginBottom: "5px", color: "#666" }, children: [
@@ -55202,7 +55202,7 @@ ${prettyStateOverride(stateOverride)}`;
               border: "1px solid #e9ecef",
               borderRadius: "4px"
             }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { style: { margin: "0 0 15px 0", color: "#333" }, children: "PrivatePay Wallet" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { style: { margin: "0 0 15px 0", color: "#333" }, children: "PrivacyLinks Wallet" }),
               walletInfo.currentSessionAddress && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: "15px" }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "5px" }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { style: { color: "#28a745" }, children: "Current Session Address:" }),

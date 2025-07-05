@@ -292,7 +292,7 @@ const App = () => {
       backgroundColor: 'white'
     }}>
       <h2 style={{ margin: '0 0 20px 0', color: '#333', textAlign: 'center' }}>
-        Welcome to PrivatePay
+        Welcome to PrivacyLinks
       </h2>
       
       {!walletInfo ? (
@@ -377,7 +377,7 @@ const App = () => {
             borderRadius: '4px'
           }}>
             <h3 style={{ margin: '0 0 15px 0', color: '#333' }}>
-              PrivatePay Wallet
+              PrivacyLinks Wallet
             </h3>
             
             {/* <div style={{ marginBottom: '15px' }}>

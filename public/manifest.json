@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "PrivatePay",
+  "name": "PrivacyLinks",
   "version": "0.0.1",
   "action": {
     "default_popup": "popup.html",
