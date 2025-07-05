@@ -41,6 +41,7 @@ const build = async () => {
 
     // Copy manifest.json and inject.js
     copyFile('public/manifest.json', 'dist/manifest.json');
+    copyFile('public/icon32.png', 'dist/icon32.png');
     copyFile('src/inject.js', 'dist/inject.js');
 
     // Create popup.html
