@@ -24525,58 +24525,80 @@
   var require_background = __commonJS({
     "src/background.ts"() {
       init_lib2();
-      var wallet = null;
-      var initializeWallet = async () => {
+      var masterWallet = null;
+      var currentSessionWallet = null;
+      var sessionCounter = 0;
+      var initializeMasterWallet = async () => {
         try {
-          const result = await chrome.storage.local.get(["privateKey"]);
-          if (result.privateKey) {
-            wallet = new ethers_exports.Wallet(result.privateKey);
-            console.log("Wallet initialized:", wallet.address);
+          const result = await chrome.storage.local.get(["seedPhrase"]);
+          if (result.seedPhrase) {
+            masterWallet = ethers_exports.Wallet.fromPhrase(result.seedPhrase);
+            console.log("Master wallet initialized from seed phrase");
+            const sessionResult = await chrome.storage.local.get(["sessionCounter"]);
+            sessionCounter = sessionResult.sessionCounter || 0;
           }
         } catch (error) {
-          console.error("Error initializing wallet:", error);
+          console.error("Error initializing master wallet:", error);
         }
       };
-      initializeWallet();
+      var generateFreshSessionWallet = async () => {
+        if (!masterWallet) {
+          console.error("No master wallet available");
+          return null;
+        }
+        sessionCounter++;
+        await chrome.storage.local.set({ sessionCounter });
+        const derivationPath = `m/44'/60'/0'/0/${sessionCounter}`;
+        const hdNode = ethers_exports.HDNodeWallet.fromPhrase(masterWallet.mnemonic.phrase, void 0, derivationPath);
+        currentSessionWallet = new ethers_exports.Wallet(hdNode.privateKey);
+        console.log(`Generated fresh session wallet #${sessionCounter}:`, currentSessionWallet.address);
+        return currentSessionWallet;
+      };
+      initializeMasterWallet();
       chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         (async () => {
           try {
             if (msg.type === "connect") {
-              if (!wallet) {
+              if (!masterWallet) {
                 sendResponse(null);
                 return;
               }
-              sendResponse(wallet.address);
+              const sessionWallet = await generateFreshSessionWallet();
+              if (sessionWallet) {
+                sendResponse(sessionWallet.address);
+              } else {
+                sendResponse(null);
+              }
             }
             if (msg.type === "getAccounts") {
-              if (!wallet) {
+              if (currentSessionWallet) {
+                sendResponse(currentSessionWallet.address);
+              } else {
                 sendResponse(null);
-                return;
               }
-              sendResponse(wallet.address);
             }
             if (msg.type === "personalSign") {
-              if (!wallet) {
+              if (!currentSessionWallet) {
                 sendResponse({ error: "No wallet connected" });
                 return;
               }
               const { message } = msg;
               try {
-                const signature = await wallet.signMessage(message);
+                const signature = await currentSessionWallet.signMessage(message);
                 sendResponse(signature);
               } catch (error) {
                 sendResponse({ error: "Failed to sign message" });
               }
             }
             if (msg.type === "sendTransaction") {
-              if (!wallet) {
+              if (!currentSessionWallet) {
                 sendResponse({ error: "No wallet connected" });
                 return;
               }
               const { txParams } = msg;
               try {
                 const provider = new ethers_exports.JsonRpcProvider("https://mainnet.infura.io/v3/YOUR_INFURA_KEY");
-                const connectedWallet = wallet.connect(provider);
+                const connectedWallet = currentSessionWallet.connect(provider);
                 const tx = await connectedWallet.sendTransaction(txParams);
                 sendResponse(tx.hash);
               } catch (error) {
@@ -24584,14 +24606,35 @@
               }
             }
             if (msg.type === "importWallet") {
-              const { privateKey } = msg;
+              const { seedPhrase } = msg;
               try {
-                wallet = new ethers_exports.Wallet(privateKey);
-                await chrome.storage.local.set({ privateKey });
-                sendResponse({ success: true, address: wallet.address });
+                const testWallet = ethers_exports.Wallet.fromPhrase(seedPhrase);
+                await chrome.storage.local.set({
+                  seedPhrase,
+                  sessionCounter: 0
+                });
+                masterWallet = testWallet;
+                sessionCounter = 0;
+                currentSessionWallet = null;
+                sendResponse({
+                  success: true,
+                  masterAddress: testWallet.address,
+                  message: "Seed phrase stored. Fresh addresses will be generated for each connection."
+                });
               } catch (error) {
-                sendResponse({ error: "Invalid private key" });
+                sendResponse({ error: "Invalid seed phrase" });
               }
+            }
+            if (msg.type === "getWalletInfo") {
+              if (!masterWallet) {
+                sendResponse({ error: "No wallet imported" });
+                return;
+              }
+              sendResponse({
+                masterAddress: masterWallet.address,
+                currentSessionAddress: currentSessionWallet?.address || null,
+                sessionCount: sessionCounter
+              });
             }
           } catch (error) {
             console.error("Background script error:", error);

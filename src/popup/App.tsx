@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 
+interface WalletInfo {
+  masterAddress: string;
+  currentSessionAddress: string | null;
+  sessionCount: number;
+}
+
 const App = () => {
   const [mnemonic, setMnemonic] = useState('');
-  const [wallet, setWallet] = useState<ethers.Wallet | null>(null);
+  const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState('');
 
@@ -13,10 +19,9 @@ const App = () => {
 
   const loadExistingWallet = async () => {
     try {
-      const result = await chrome.storage.local.get(['privateKey']);
-      if (result.privateKey) {
-        const w = new ethers.Wallet(result.privateKey);
-        setWallet(w);
+      const response = await chrome.runtime.sendMessage({ type: 'getWalletInfo' });
+      if (response && !response.error) {
+        setWalletInfo(response);
       }
     } catch (err) {
       console.error('Error loading wallet:', err);
@@ -33,17 +38,19 @@ const App = () => {
     setError('');
 
     try {
-      const w = ethers.Wallet.fromPhrase(mnemonic.trim());
-      
       const response = await chrome.runtime.sendMessage({
         type: 'importWallet',
-        privateKey: w.privateKey
+        seedPhrase: mnemonic.trim()
       });
 
       if (response.error) {
         setError(response.error);
       } else {
-        setWallet(w);
+        setWalletInfo({
+          masterAddress: response.masterAddress,
+          currentSessionAddress: null,
+          sessionCount: 0
+        });
         setMnemonic('');
         setError('');
       }
@@ -56,8 +63,8 @@ const App = () => {
 
   const clearWallet = async () => {
     try {
-      await chrome.storage.local.remove(['privateKey']);
-      setWallet(null);
+      await chrome.storage.local.remove(['seedPhrase', 'sessionCounter']);
+      setWalletInfo(null);
       setMnemonic('');
       setError('');
     } catch (err) {
@@ -76,7 +83,7 @@ const App = () => {
         Mini ETH Wallet
       </h2>
       
-      {!wallet ? (
+      {!walletInfo ? (
         <div>
           <div style={{ marginBottom: '15px' }}>
             <label style={{ display: 'block', marginBottom: '5px', color: '#666' }}>
@@ -138,26 +145,59 @@ const App = () => {
             border: '1px solid #e9ecef',
             borderRadius: '4px'
           }}>
-            <h3 style={{ margin: '0 0 10px 0', color: '#333' }}>
-              Wallet Connected
+            <h3 style={{ margin: '0 0 15px 0', color: '#333' }}>
+              PrivatePay Wallet
             </h3>
-            <div style={{ marginBottom: '10px' }}>
-              <strong>Address:</strong>
+            
+            <div style={{ marginBottom: '15px' }}>
+              <strong style={{ color: '#495057' }}>Master Address:</strong>
               <div style={{ 
                 marginTop: '5px',
                 wordBreak: 'break-all',
-                fontSize: '12px',
+                fontSize: '11px',
                 fontFamily: 'monospace',
-                color: '#666'
+                color: '#6c757d',
+                backgroundColor: '#e9ecef',
+                padding: '6px',
+                borderRadius: '3px'
               }}>
-                {wallet.address}
+                {walletInfo.masterAddress}
               </div>
+            </div>
+            
+            {walletInfo.currentSessionAddress && (
+              <div style={{ marginBottom: '15px' }}>
+                <strong style={{ color: '#28a745' }}>Current Session Address:</strong>
+                <div style={{ 
+                  marginTop: '5px',
+                  wordBreak: 'break-all',
+                  fontSize: '11px',
+                  fontFamily: 'monospace',
+                  color: '#155724',
+                  backgroundColor: '#d4edda',
+                  padding: '6px',
+                  borderRadius: '3px'
+                }}>
+                  {walletInfo.currentSessionAddress}
+                </div>
+              </div>
+            )}
+            
+            <div style={{ fontSize: '12px', color: '#6c757d' }}>
+              Sessions Generated: <strong>{walletInfo.sessionCount}</strong>
             </div>
           </div>
           
-          <div style={{ marginBottom: '15px' }}>
-            <p style={{ fontSize: '14px', color: '#666', margin: '0 0 10px 0' }}>
-              Your wallet is ready to use with dApps. Visit any Ethereum dApp and connect your wallet.
+          <div style={{ 
+            marginBottom: '15px',
+            padding: '12px',
+            backgroundColor: '#fff3cd',
+            border: '1px solid #ffeaa7',
+            borderRadius: '4px'
+          }}>
+            <p style={{ fontSize: '13px', color: '#856404', margin: '0' }}>
+              <strong>🔄 Fresh Address Mode:</strong> Each time you connect to a dApp, 
+              a new address will be generated for enhanced privacy.
             </p>
           </div>
           

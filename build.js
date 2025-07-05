@@ -39,8 +39,9 @@ const build = async () => {
       external: ['chrome']
     });
 
-    // Copy manifest.json
+    // Copy manifest.json and inject.js
     copyFile('public/manifest.json', 'dist/manifest.json');
+    copyFile('src/inject.js', 'dist/inject.js');
 
     // Create popup.html
     const popupHtml = `<!DOCTYPE html>
