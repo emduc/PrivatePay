@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 
+
 interface WalletInfo {
   masterAddress: string;
   currentSessionAddress: string | null;
@@ -174,10 +175,11 @@ const App = () => {
       padding: '20px', 
       width: '350px', 
       minHeight: '400px',
-      fontFamily: 'Arial, sans-serif'
+      fontFamily: 'Arial, sans-serif',
+      backgroundColor: 'white'
     }}>
       <h2 style={{ margin: '0 0 20px 0', color: '#333' }}>
-        Mini ETH Wallet
+        Welcome to PrivatePay
       </h2>
       
       {!walletInfo ? (
@@ -469,21 +471,6 @@ const App = () => {
             </div>
           )}
           
-          <button
-            onClick={clearWallet}
-            style={{
-              width: '100%',
-              padding: '10px',
-              backgroundColor: '#dc3545',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            Clear Wallet
-          </button>
         </div>
       )}
       
@@ -499,6 +486,31 @@ const App = () => {
         <strong>Security Notice:</strong> This is a Proof of Concept. 
         Do not use with real funds.
       </div>
+      
+      {walletInfo && (
+        <div style={{ textAlign: 'center', marginTop: '8px' }}>
+          <span
+            onClick={clearWallet}
+            style={{
+              fontSize: '10px',
+              color: '#6c757d',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              opacity: 0.7
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = '1';
+              e.currentTarget.style.color = '#dc3545';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = '0.7';
+              e.currentTarget.style.color = '#6c757d';
+            }}
+          >
+            Change secret
+          </span>
+        </div>
+      )}
     </div>
   );
 };

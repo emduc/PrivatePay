@@ -36957,9 +36957,10 @@
           padding: "20px",
           width: "350px",
           minHeight: "400px",
-          fontFamily: "Arial, sans-serif"
+          fontFamily: "Arial, sans-serif",
+          backgroundColor: "white"
         }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { style: { margin: "0 0 20px 0", color: "#333" }, children: "Mini ETH Wallet" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { style: { margin: "0 0 20px 0", color: "#333" }, children: "Welcome to PrivatePay" }),
           !walletInfo ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: "15px" }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: { display: "block", marginBottom: "5px", color: "#666" }, children: "Enter 12-word seed phrase:" }),
@@ -37216,24 +37217,7 @@
                   )
                 ] })
               ] }, tx.id))
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "button",
-              {
-                onClick: clearWallet,
-                style: {
-                  width: "100%",
-                  padding: "10px",
-                  backgroundColor: "#dc3545",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  fontSize: "14px"
-                },
-                children: "Clear Wallet"
-              }
-            )
+            ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
             marginTop: "20px",
@@ -37246,7 +37230,29 @@
           }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "Security Notice:" }),
             " This is a Proof of Concept. Do not use with real funds."
-          ] })
+          ] }),
+          walletInfo && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { textAlign: "center", marginTop: "8px" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "span",
+            {
+              onClick: clearWallet,
+              style: {
+                fontSize: "10px",
+                color: "#6c757d",
+                cursor: "pointer",
+                textDecoration: "underline",
+                opacity: 0.7
+              },
+              onMouseEnter: (e) => {
+                e.currentTarget.style.opacity = "1";
+                e.currentTarget.style.color = "#dc3545";
+              },
+              onMouseLeave: (e) => {
+                e.currentTarget.style.opacity = "0.7";
+                e.currentTarget.style.color = "#6c757d";
+              },
+              children: "Change secret"
+            }
+          ) })
         ] });
       };
       App_default = App;
