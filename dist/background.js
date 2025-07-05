@@ -24774,9 +24774,7 @@
                 console.log("Notification permission not granted");
               }
               pendingTx.then((result) => {
-                sendResponse(result);
               }).catch((error) => {
-                sendResponse({ error: error.message });
               });
               return true;
             }
@@ -24865,6 +24863,12 @@
                 sendResponse({ error: "Transaction not found" });
                 return;
               }
+              if (pendingTx.processing) {
+                console.log("\u26A0\uFE0F Transaction already being processed, ignoring duplicate approval");
+                sendResponse({ error: "Transaction already being processed" });
+                return;
+              }
+              pendingTx.processing = true;
               console.log("\u2705 Transaction found in pending list");
               console.log("\u{1F680} Starting real transaction submission...");
               console.log("Transaction ID:", txId);
@@ -24873,170 +24877,232 @@
               console.log("Current session wallet exists?", !!currentSessionWallet);
               console.log("Master wallet exists?", !!masterWallet);
               console.log("\u{1F527} Starting transaction execution...");
-              try {
-                console.log("\u{1F4E1} Creating provider connection...");
-                const provider = new ethers_exports.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
-                console.log("\u2705 Provider created successfully");
-                if (!currentSessionWallet) {
-                  throw new Error("No session wallet available");
-                }
-                console.log("\u{1F50D} Estimating gas on original transaction params...");
-                console.log("   To:", pendingTx.txParams.to);
-                console.log("   Value:", pendingTx.txParams.value || "0x0");
-                console.log("   Data:", pendingTx.txParams.data || "0x");
-                console.log("   From (original):", pendingTx.txParams.from);
-                const estimatedGas = await provider.estimateGas({
-                  to: pendingTx.txParams.to,
-                  value: pendingTx.txParams.value || "0x0",
-                  data: pendingTx.txParams.data || "0x",
-                  from: pendingTx.txParams.from
-                  // Use original from address for estimation
-                });
-                console.log("\u2705 Gas estimation successful with original params");
-                const spoofingResult = await chrome.storage.local.get(["addressSpoofing"]);
-                const addressSpoofingEnabled2 = spoofingResult.addressSpoofing || false;
-                if (addressSpoofingEnabled2 && currentSessionWallet) {
-                  const originalTxParams = JSON.stringify(pendingTx.txParams, null, 2);
-                  const replaceSpoofedAddress = (obj) => {
-                    if (typeof obj === "string") {
-                      if (obj.toLowerCase() === SPOOFED_ADDRESS.toLowerCase()) {
-                        console.log(`\u{1F504} Found spoofed address in string: ${obj} -> ${currentSessionWallet.address}`);
-                        return currentSessionWallet.address;
-                      }
-                      if (obj.startsWith("0x") && obj.toLowerCase().includes(SPOOFED_ADDRESS.toLowerCase().slice(2))) {
-                        console.log(`\u{1F504} Found spoofed address in hex data: ${obj}`);
-                        const replaced = obj.replace(
-                          new RegExp(SPOOFED_ADDRESS.slice(2), "gi"),
-                          currentSessionWallet.address.slice(2)
-                        );
-                        console.log(`   -> ${replaced}`);
-                        return replaced;
+              pendingTransactions.delete(txId);
+              sendResponse({ success: true, message: "Transaction approved and processing started" });
+              (async () => {
+                try {
+                  console.log("\u{1F4E1} Creating provider connection...");
+                  const provider = new ethers_exports.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
+                  console.log("\u2705 Provider created successfully");
+                  if (!currentSessionWallet) {
+                    throw new Error("No session wallet available");
+                  }
+                  console.log("\u{1F50D} Estimating gas on original transaction params...");
+                  console.log("   To:", pendingTx.txParams.to);
+                  console.log("   Value:", pendingTx.txParams.value || "0x0");
+                  console.log("   Data:", pendingTx.txParams.data || "0x");
+                  console.log("   From (original):", pendingTx.txParams.from);
+                  const estimatedGas = await provider.estimateGas({
+                    to: pendingTx.txParams.to,
+                    value: pendingTx.txParams.value || "0x0",
+                    data: pendingTx.txParams.data || "0x",
+                    from: pendingTx.txParams.from
+                    // Use original from address for estimation
+                  });
+                  console.log("\u2705 Gas estimation successful with original params");
+                  const spoofingResult = await chrome.storage.local.get(["addressSpoofing"]);
+                  const addressSpoofingEnabled2 = spoofingResult.addressSpoofing || false;
+                  if (addressSpoofingEnabled2 && currentSessionWallet) {
+                    const originalTxParams = JSON.stringify(pendingTx.txParams, null, 2);
+                    const replaceSpoofedAddress = (obj) => {
+                      if (typeof obj === "string") {
+                        if (obj.toLowerCase() === SPOOFED_ADDRESS.toLowerCase()) {
+                          console.log(`\u{1F504} Found spoofed address in string: ${obj} -> ${currentSessionWallet.address}`);
+                          return currentSessionWallet.address;
+                        }
+                        if (obj.startsWith("0x") && obj.toLowerCase().includes(SPOOFED_ADDRESS.toLowerCase().slice(2))) {
+                          console.log(`\u{1F504} Found spoofed address in hex data: ${obj}`);
+                          const replaced = obj.replace(
+                            new RegExp(SPOOFED_ADDRESS.slice(2), "gi"),
+                            currentSessionWallet.address.slice(2)
+                          );
+                          console.log(`   -> ${replaced}`);
+                          return replaced;
+                        }
+                        return obj;
+                      } else if (Array.isArray(obj)) {
+                        return obj.map(replaceSpoofedAddress);
+                      } else if (obj && typeof obj === "object") {
+                        const result = {};
+                        for (const [key, value] of Object.entries(obj)) {
+                          result[key] = replaceSpoofedAddress(value);
+                        }
+                        return result;
                       }
                       return obj;
-                    } else if (Array.isArray(obj)) {
-                      return obj.map(replaceSpoofedAddress);
-                    } else if (obj && typeof obj === "object") {
-                      const result = {};
-                      for (const [key, value] of Object.entries(obj)) {
-                        result[key] = replaceSpoofedAddress(value);
-                      }
-                      return result;
+                    };
+                    pendingTx.txParams = replaceSpoofedAddress(pendingTx.txParams);
+                    const modifiedTxParams = JSON.stringify(pendingTx.txParams, null, 2);
+                    if (originalTxParams !== modifiedTxParams) {
+                      console.log(`\u{1F3AD} SPOOFED ADDRESS REPLACEMENT COMPLETED`);
+                      console.log(`   Original:`, originalTxParams);
+                      console.log(`   Modified:`, modifiedTxParams);
                     }
-                    return obj;
+                  }
+                  const connectedSessionWallet = currentSessionWallet.connect(provider);
+                  const connectedMasterWallet = masterWallet.connect(provider);
+                  console.log("\u{1F517} Wallets connected to provider");
+                  const poolContract = new ethers_exports.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, provider);
+                  console.log("\u{1F50D} Checking Pool contract at:", POOL_CONTRACT_ADDRESS);
+                  console.log("\u{1F50D} Checking balance for master wallet:", masterWallet.address);
+                  const masterPoolBalance = await poolContract.getFunction("getBalance")(masterWallet.address);
+                  console.log("\u{1F3DB}\uFE0F Master pool balance:", ethers_exports.formatEther(masterPoolBalance), "ETH");
+                  console.log("\u{1F3DB}\uFE0F Master pool balance (wei):", masterPoolBalance.toString());
+                  console.log("\u{1F3DB}\uFE0F Master wallet address:", masterWallet.address);
+                  if (masterPoolBalance === 0n) {
+                    console.log("\u26A0\uFE0F WARNING: Master wallet has ZERO balance in Pool contract!");
+                    console.log("   This means no funds have been deposited to the Pool contract yet.");
+                    console.log("   You need to deposit ETH to the Pool contract first using the deposit suggestion.");
+                  }
+                  const sessionBalance = await provider.getBalance(currentSessionWallet.address);
+                  console.log("\u{1F4B0} Current session wallet balance:", ethers_exports.formatEther(sessionBalance), "ETH");
+                  console.log("\u{1F4B0} Current session wallet address:", currentSessionWallet.address);
+                  const gasPrice = await provider.getFeeData();
+                  const maxFeePerGas = gasPrice.maxFeePerGas || gasPrice.gasPrice || ethers_exports.parseUnits("20", "gwei");
+                  const gasCost = estimatedGas * maxFeePerGas;
+                  const txValue = BigInt(pendingTx.txParams.value || "0x0");
+                  const totalNeeded = gasCost + txValue;
+                  console.log("\u26FD Gas estimate:", estimatedGas.toString());
+                  console.log("\u{1F4B8} Max fee per gas:", ethers_exports.formatUnits(maxFeePerGas, "gwei"), "gwei");
+                  console.log("\u{1F4B8} Gas cost:", ethers_exports.formatEther(gasCost), "ETH");
+                  console.log("\u{1F4B5} Transaction value:", ethers_exports.formatEther(txValue), "ETH");
+                  console.log("\u{1F9EE} Total needed:", ethers_exports.formatEther(totalNeeded), "ETH");
+                  console.log("\u{1F4B0} Current balance:", ethers_exports.formatEther(sessionBalance), "ETH");
+                  console.log("\u2753 Need funding?", sessionBalance < totalNeeded);
+                  console.log("\u{1F50D} DETAILED FUNDING ANALYSIS:");
+                  console.log("   Session has:", ethers_exports.formatEther(sessionBalance), "ETH");
+                  console.log("   Needs total:", ethers_exports.formatEther(totalNeeded), "ETH");
+                  console.log("   Pool has:", ethers_exports.formatEther(masterPoolBalance), "ETH");
+                  console.log("   Deficit:", ethers_exports.formatEther(totalNeeded - sessionBalance), "ETH");
+                  if (sessionBalance < totalNeeded) {
+                    const fundingAmount = totalNeeded - sessionBalance + ethers_exports.parseEther("0.01");
+                    console.log("\u{1F3E6} FUNDING SESSION WALLET REQUIRED!");
+                    console.log("   \u{1F4CA} Balance check:", ethers_exports.formatEther(sessionBalance), "<", ethers_exports.formatEther(totalNeeded));
+                    console.log("   \u{1F4B0} Funding amount:", ethers_exports.formatEther(fundingAmount), "ETH");
+                    console.log("   \u{1F4E4} From (Pool contract):", POOL_CONTRACT_ADDRESS);
+                    console.log("   \u{1F4E5} To (session):", currentSessionWallet.address);
+                    if (masterPoolBalance < fundingAmount) {
+                      throw new Error(`Pool contract insufficient funds: has ${ethers_exports.formatEther(masterPoolBalance)} ETH, needs ${ethers_exports.formatEther(fundingAmount)} ETH`);
+                    }
+                    console.log("\u{1F4E1} Sending Pool withdraw transaction...");
+                    try {
+                      console.log("\u{1F517} Connecting Pool contract to master wallet...");
+                      const connectedPoolContract = poolContract.connect(connectedMasterWallet);
+                      console.log("\u2705 Pool contract connected");
+                      console.log("\u{1F3AF} Calling Pool withdraw function with params:");
+                      console.log("   Destination:", currentSessionWallet.address);
+                      console.log("   Amount:", ethers_exports.formatEther(fundingAmount), "ETH");
+                      console.log("   Amount (wei):", fundingAmount.toString());
+                      const fundingTx = await connectedPoolContract.getFunction("withdraw")(currentSessionWallet.address, fundingAmount);
+                      console.log("\u2705 Pool withdraw transaction created successfully");
+                      console.log("\u23F3 Pool withdraw transaction sent:", fundingTx.hash);
+                      console.log("\u{1F517} View funding tx:", `https://sepolia.etherscan.io/tx/${fundingTx.hash}`);
+                      console.log("\u23F3 Waiting for Pool withdraw confirmation...");
+                      const fundingReceipt = await fundingTx.wait();
+                      console.log("\u2705 Pool withdraw transaction confirmed!");
+                      console.log("\u{1F4CB} Pool withdraw receipt:", fundingReceipt);
+                      let newSessionBalance = 0n;
+                      let attempts = 0;
+                      const maxAttempts = 5;
+                      while (attempts < maxAttempts) {
+                        console.log(`\u23F3 Checking balance (attempt ${attempts + 1}/${maxAttempts})...`);
+                        newSessionBalance = await provider.getBalance(currentSessionWallet.address);
+                        console.log("\u{1F4B0} Session wallet balance:", ethers_exports.formatEther(newSessionBalance), "ETH");
+                        if (newSessionBalance >= totalNeeded) {
+                          console.log("\u2705 Funding verification: SUCCESS");
+                          break;
+                        }
+                        if (attempts < maxAttempts - 1) {
+                          console.log("\u23F3 Balance still insufficient, waiting 3 seconds before retry...");
+                          await new Promise((resolve) => setTimeout(resolve, 3e3));
+                        }
+                        attempts++;
+                      }
+                      if (newSessionBalance < totalNeeded) {
+                        const stillNeeded = totalNeeded - newSessionBalance;
+                        console.log("\u274C Funding verification: FAILED after", maxAttempts, "attempts");
+                        throw new Error(`Funding incomplete! Session wallet still needs ${ethers_exports.formatEther(stillNeeded)} ETH more. Pool withdraw transaction was confirmed but balance not updated after ${maxAttempts} attempts.`);
+                      }
+                    } catch (fundingError) {
+                      console.error("\u{1F4A5} POOL WITHDRAW FUNDING FAILED:", fundingError);
+                      console.error("Error details:", {
+                        message: fundingError?.message || "Unknown error",
+                        code: fundingError?.code || "No code",
+                        reason: fundingError?.reason || "No reason"
+                      });
+                      console.log("\u{1F504} ATTEMPTING FALLBACK: Direct wallet transfer...");
+                      try {
+                        const masterDirectBalance = await provider.getBalance(masterWallet.address);
+                        console.log("\u{1F3DB}\uFE0F Master direct balance:", ethers_exports.formatEther(masterDirectBalance), "ETH");
+                        if (masterDirectBalance < fundingAmount) {
+                          throw new Error(`Both Pool and direct wallet insufficient funds. Pool error: ${fundingError?.message || "Unknown"}. Direct wallet has ${ethers_exports.formatEther(masterDirectBalance)} ETH, needs ${ethers_exports.formatEther(fundingAmount)} ETH`);
+                        }
+                        console.log("\u{1F4E1} Sending direct wallet transfer as fallback...");
+                        const fallbackTx = await connectedMasterWallet.sendTransaction({
+                          to: currentSessionWallet.address,
+                          value: fundingAmount,
+                          gasLimit: 21e3
+                          // Simple transfer
+                        });
+                        console.log("\u23F3 Fallback transfer sent:", fallbackTx.hash);
+                        await fallbackTx.wait();
+                        console.log("\u2705 Fallback transfer confirmed!");
+                        const finalBalance = await provider.getBalance(currentSessionWallet.address);
+                        console.log("\u{1F4B0} Final session balance after fallback:", ethers_exports.formatEther(finalBalance), "ETH");
+                        if (finalBalance < totalNeeded) {
+                          const stillNeeded = totalNeeded - finalBalance;
+                          throw new Error(`Even fallback transfer failed! Still need ${ethers_exports.formatEther(stillNeeded)} ETH more.`);
+                        }
+                      } catch (fallbackError) {
+                        console.error("\u{1F4A5} FALLBACK ALSO FAILED:", fallbackError);
+                        throw new Error(`Both Pool withdraw and fallback failed. Pool: ${fundingError?.message || "Unknown"}. Fallback: ${fallbackError?.message || "Unknown"}`);
+                      }
+                    }
+                  } else {
+                    console.log("\u2705 Session wallet has sufficient balance - no funding needed");
+                  }
+                  const txRequest = {
+                    to: pendingTx.txParams.to,
+                    value: pendingTx.txParams.value || "0x0",
+                    data: pendingTx.txParams.data || "0x",
+                    // Use our estimated gas and fee data
+                    gasLimit: estimatedGas,
+                    maxFeePerGas,
+                    // Let provider determine nonce
+                    nonce: await provider.getTransactionCount(connectedSessionWallet.address)
                   };
-                  pendingTx.txParams = replaceSpoofedAddress(pendingTx.txParams);
-                  const modifiedTxParams = JSON.stringify(pendingTx.txParams, null, 2);
-                  if (originalTxParams !== modifiedTxParams) {
-                    console.log(`\u{1F3AD} SPOOFED ADDRESS REPLACEMENT COMPLETED`);
-                    console.log(`   Original:`, originalTxParams);
-                    console.log(`   Modified:`, modifiedTxParams);
+                  console.log("\u{1F4DD} Transaction request prepared:", txRequest);
+                  console.log("\u{1F4E4} Sending transaction to network...");
+                  const txResponse = await connectedSessionWallet.sendTransaction(txRequest);
+                  console.log("\u2705 Transaction submitted! Hash:", txResponse.hash);
+                  console.log("\u{1F50D} View on Etherscan:", `https://sepolia.etherscan.io/tx/${txResponse.hash}`);
+                  pendingTx.resolve(txResponse.hash);
+                  console.log("\u23F3 Waiting for confirmation...");
+                  txResponse.wait().then((receipt) => {
+                    if (receipt) {
+                      console.log("\u{1F389} Transaction confirmed!", receipt);
+                      console.log("Gas used:", receipt.gasUsed.toString());
+                      console.log("Block number:", receipt.blockNumber);
+                    }
+                  }).catch((error) => {
+                    console.error("\u274C Transaction failed:", error);
+                  });
+                } catch (error) {
+                  console.error("\u{1F4A5}\u{1F4A5}\u{1F4A5} TRANSACTION SUBMISSION COMPLETELY FAILED \u{1F4A5}\u{1F4A5}\u{1F4A5}");
+                  console.error("\u274C Error object:", error);
+                  console.error("\u274C Error message:", error?.message || "Unknown error");
+                  console.error("\u274C Error code:", error?.code || "No code");
+                  console.error("\u274C Error reason:", error?.reason || "No reason");
+                  console.error("\u274C Error stack:", error?.stack || "No stack");
+                  console.error("\u274C Error data:", error?.data || "No data");
+                  if (error?.message?.includes("insufficient funds") || error?.reason?.includes("insufficient funds")) {
+                    console.error("\u{1F6A8} INSUFFICIENT FUNDS ERROR DETECTED");
+                    console.error("   This means the funding mechanism failed or was skipped");
+                    console.error("   Check if the funding logs appeared above");
                   }
+                  pendingTx.reject(error);
                 }
-                const connectedSessionWallet = currentSessionWallet.connect(provider);
-                const connectedMasterWallet = masterWallet.connect(provider);
-                console.log("\u{1F517} Wallets connected to provider");
-                const masterBalance = await provider.getBalance(masterWallet.address);
-                console.log("\u{1F3DB}\uFE0F Master wallet balance:", ethers_exports.formatEther(masterBalance), "ETH");
-                console.log("\u{1F3DB}\uFE0F Master wallet address:", masterWallet.address);
-                const sessionBalance = await provider.getBalance(currentSessionWallet.address);
-                console.log("\u{1F4B0} Current session wallet balance:", ethers_exports.formatEther(sessionBalance), "ETH");
-                console.log("\u{1F4B0} Current session wallet address:", currentSessionWallet.address);
-                const gasPrice = await provider.getFeeData();
-                const maxFeePerGas = gasPrice.maxFeePerGas || gasPrice.gasPrice || ethers_exports.parseUnits("20", "gwei");
-                const gasCost = estimatedGas * maxFeePerGas;
-                const txValue = BigInt(pendingTx.txParams.value || "0x0");
-                const totalNeeded = gasCost + txValue;
-                console.log("\u26FD Gas estimate:", estimatedGas.toString());
-                console.log("\u{1F4B8} Max fee per gas:", ethers_exports.formatUnits(maxFeePerGas, "gwei"), "gwei");
-                console.log("\u{1F4B8} Gas cost:", ethers_exports.formatEther(gasCost), "ETH");
-                console.log("\u{1F4B5} Transaction value:", ethers_exports.formatEther(txValue), "ETH");
-                console.log("\u{1F9EE} Total needed:", ethers_exports.formatEther(totalNeeded), "ETH");
-                console.log("\u{1F4B0} Current balance:", ethers_exports.formatEther(sessionBalance), "ETH");
-                console.log("\u2753 Need funding?", sessionBalance < totalNeeded);
-                if (sessionBalance < totalNeeded) {
-                  const fundingAmount = totalNeeded - sessionBalance + ethers_exports.parseEther("0.01");
-                  console.log("\u{1F3E6} FUNDING SESSION WALLET REQUIRED!");
-                  console.log("   \u{1F4CA} Balance check:", ethers_exports.formatEther(sessionBalance), "<", ethers_exports.formatEther(totalNeeded));
-                  console.log("   \u{1F4B0} Funding amount:", ethers_exports.formatEther(fundingAmount), "ETH");
-                  console.log("   \u{1F4E4} From (master):", masterWallet.address);
-                  console.log("   \u{1F4E5} To (session):", currentSessionWallet.address);
-                  if (masterBalance < fundingAmount) {
-                    throw new Error(`Master wallet insufficient funds: has ${ethers_exports.formatEther(masterBalance)} ETH, needs ${ethers_exports.formatEther(fundingAmount)} ETH`);
-                  }
-                  console.log("\u{1F4E1} Sending funding transaction...");
-                  try {
-                    const fundingTx = await connectedMasterWallet.sendTransaction({
-                      to: currentSessionWallet.address,
-                      value: fundingAmount,
-                      gasLimit: 21e3
-                      // Simple transfer
-                    });
-                    console.log("\u23F3 Funding transaction sent:", fundingTx.hash);
-                    console.log("\u{1F517} View funding tx:", `https://sepolia.etherscan.io/tx/${fundingTx.hash}`);
-                    console.log("\u23F3 Waiting for funding confirmation...");
-                    const fundingReceipt = await fundingTx.wait();
-                    console.log("\u2705 Funding transaction confirmed!");
-                    console.log("\u{1F4CB} Funding receipt:", fundingReceipt);
-                    const newSessionBalance = await provider.getBalance(currentSessionWallet.address);
-                    console.log("\u{1F4B0} New session wallet balance:", ethers_exports.formatEther(newSessionBalance), "ETH");
-                    console.log("\u2705 Funding verification:", newSessionBalance >= totalNeeded ? "SUCCESS" : "FAILED");
-                  } catch (fundingError) {
-                    console.error("\u{1F4A5} FUNDING TRANSACTION FAILED:", fundingError);
-                    console.error("Error details:", {
-                      message: fundingError?.message || "Unknown error",
-                      code: fundingError?.code || "No code",
-                      reason: fundingError?.reason || "No reason"
-                    });
-                    throw new Error(`Funding failed: ${fundingError?.message || "Unknown error"}`);
-                  }
-                } else {
-                  console.log("\u2705 Session wallet has sufficient balance - no funding needed");
-                }
-                const txRequest = {
-                  to: pendingTx.txParams.to,
-                  value: pendingTx.txParams.value || "0x0",
-                  data: pendingTx.txParams.data || "0x",
-                  // Use our estimated gas and fee data
-                  gasLimit: estimatedGas,
-                  maxFeePerGas,
-                  // Let provider determine nonce
-                  nonce: await provider.getTransactionCount(connectedSessionWallet.address)
-                };
-                console.log("\u{1F4DD} Transaction request prepared:", txRequest);
-                console.log("\u{1F4E4} Sending transaction to network...");
-                const txResponse = await connectedSessionWallet.sendTransaction(txRequest);
-                console.log("\u2705 Transaction submitted! Hash:", txResponse.hash);
-                console.log("\u{1F50D} View on Etherscan:", `https://sepolia.etherscan.io/tx/${txResponse.hash}`);
-                pendingTx.resolve(txResponse.hash);
-                pendingTransactions.delete(txId);
-                console.log("\u23F3 Waiting for confirmation...");
-                txResponse.wait().then((receipt) => {
-                  if (receipt) {
-                    console.log("\u{1F389} Transaction confirmed!", receipt);
-                    console.log("Gas used:", receipt.gasUsed.toString());
-                    console.log("Block number:", receipt.blockNumber);
-                  }
-                }).catch((error) => {
-                  console.error("\u274C Transaction failed:", error);
-                });
-                sendResponse({ success: true, hash: txResponse.hash });
-              } catch (error) {
-                console.error("\u{1F4A5}\u{1F4A5}\u{1F4A5} TRANSACTION SUBMISSION COMPLETELY FAILED \u{1F4A5}\u{1F4A5}\u{1F4A5}");
-                console.error("\u274C Error object:", error);
-                console.error("\u274C Error message:", error?.message || "Unknown error");
-                console.error("\u274C Error code:", error?.code || "No code");
-                console.error("\u274C Error reason:", error?.reason || "No reason");
-                console.error("\u274C Error stack:", error?.stack || "No stack");
-                console.error("\u274C Error data:", error?.data || "No data");
-                if (error?.message?.includes("insufficient funds") || error?.reason?.includes("insufficient funds")) {
-                  console.error("\u{1F6A8} INSUFFICIENT FUNDS ERROR DETECTED");
-                  console.error("   This means the funding mechanism failed or was skipped");
-                  console.error("   Check if the funding logs appeared above");
-                }
-                pendingTx.reject(error);
-                pendingTransactions.delete(txId);
-                sendResponse({ error: error?.message || "Transaction failed" });
-              }
+              })();
             }
             if (msg.type === "rejectTransaction") {
               const { txId } = msg;
@@ -25148,7 +25214,7 @@
                 console.log(`\u{1F4B8} Funding session with ${requiredAmount} ETH using Pool contract...`);
                 const connectedMasterWallet = masterWallet.connect(provider);
                 const poolContract = new ethers_exports.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, connectedMasterWallet);
-                const fundingTx = await poolContract.withdraw(sessionAddress, requiredWei);
+                const fundingTx = await poolContract.getFunction("withdraw")(sessionAddress, requiredWei);
                 console.log(`\u{1F4DD} Pool withdraw transaction sent: ${fundingTx.hash}`);
                 console.log(`\u{1F517} View on Etherscan: https://sepolia.etherscan.io/tx/${fundingTx.hash}`);
                 await fundingTx.wait();
@@ -25175,7 +25241,7 @@
               try {
                 const provider = new ethers_exports.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
                 const poolContract = new ethers_exports.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, provider);
-                const balance = await poolContract.getBalance(masterWallet.address);
+                const balance = await poolContract.getFunction("getBalance")(masterWallet.address);
                 const balanceInEth = ethers_exports.formatEther(balance);
                 sendResponse({ balance: balanceInEth });
               } catch (error) {
@@ -25195,12 +25261,12 @@
                 const connectedMasterWallet = masterWallet.connect(provider);
                 const poolContract = new ethers_exports.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, connectedMasterWallet);
                 const depositAmount = ethers_exports.parseEther(amount);
-                const depositTx = await poolContract.deposit({ value: depositAmount });
+                const depositTx = await poolContract.getFunction("deposit")({ value: depositAmount });
                 console.log(`\u{1F4DD} Pool deposit transaction sent: ${depositTx.hash}`);
                 console.log(`\u{1F517} View on Etherscan: https://sepolia.etherscan.io/tx/${depositTx.hash}`);
                 await depositTx.wait();
                 console.log("\u2705 Pool deposit transaction confirmed!");
-                const newPoolBalance = await poolContract.getBalance(masterWallet.address);
+                const newPoolBalance = await poolContract.getFunction("getBalance")(masterWallet.address);
                 console.log(`\u{1F4B0} New pool balance: ${ethers_exports.formatEther(newPoolBalance)} ETH`);
                 sendResponse({
                   success: true,

@@ -21,6 +21,7 @@ let pendingTransactions: Map<string, {
   resolve: (value: any) => void;
   reject: (reason: any) => void;
   timestamp: number;
+  processing?: boolean; // Add flag to prevent double processing
 }> = new Map();
 
 const initializeMasterWallet = async () => {
@@ -173,9 +174,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         
         // Wait for user approval/rejection
         pendingTx.then((result) => {
-          sendResponse(result);
+          // Don't send response here anymore - we'll send it immediately when approved
         }).catch((error) => {
-          sendResponse({ error: error.message });
+          // Don't send response here anymore - we'll send it immediately when approved
         });
         
         return true; // Keep message channel open for async response
@@ -291,6 +292,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return;
         }
         
+        // Check if already processing to prevent double-clicking
+        if (pendingTx.processing) {
+          console.log('⚠️ Transaction already being processed, ignoring duplicate approval');
+          sendResponse({ error: 'Transaction already being processed' });
+          return;
+        }
+        
+        // Mark as processing
+        pendingTx.processing = true;
+        
         console.log('✅ Transaction found in pending list');
         console.log('🚀 Starting real transaction submission...');
         console.log('Transaction ID:', txId);
@@ -300,6 +311,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         console.log('Master wallet exists?', !!masterWallet);
         
         console.log('🔧 Starting transaction execution...');
+        
+        // Remove from pending list immediately to close UI
+        pendingTransactions.delete(txId);
+        
+        // Send immediate response to close the approval UI
+        sendResponse({ success: true, message: 'Transaction approved and processing started' });
+        
+        // Continue processing in background
+        (async () => {
         try {
           console.log('📡 Creating provider connection...');
           // Create provider for Sepolia
@@ -378,10 +398,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const connectedMasterWallet = masterWallet!.connect(provider);
           console.log('🔗 Wallets connected to provider');
           
-          // Check master wallet balance first
-          const masterBalance = await provider.getBalance(masterWallet!.address);
-          console.log('🏛️ Master wallet balance:', ethers.formatEther(masterBalance), 'ETH');
+          // Check master's balance in Pool contract first
+          const poolContract = new ethers.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, provider);
+          console.log('🔍 Checking Pool contract at:', POOL_CONTRACT_ADDRESS);
+          console.log('🔍 Checking balance for master wallet:', masterWallet!.address);
+          
+          const masterPoolBalance = await poolContract.getFunction('getBalance')(masterWallet!.address);
+          console.log('🏛️ Master pool balance:', ethers.formatEther(masterPoolBalance), 'ETH');
+          console.log('🏛️ Master pool balance (wei):', masterPoolBalance.toString());
           console.log('🏛️ Master wallet address:', masterWallet!.address);
+          
+          if (masterPoolBalance === 0n) {
+            console.log('⚠️ WARNING: Master wallet has ZERO balance in Pool contract!');
+            console.log('   This means no funds have been deposited to the Pool contract yet.');
+            console.log('   You need to deposit ETH to the Pool contract first using the deposit suggestion.');
+          }
           
           // Check current session wallet balance
           const sessionBalance = await provider.getBalance(currentSessionWallet.address);
@@ -401,50 +432,120 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           console.log('🧮 Total needed:', ethers.formatEther(totalNeeded), 'ETH');
           console.log('💰 Current balance:', ethers.formatEther(sessionBalance), 'ETH');
           console.log('❓ Need funding?', sessionBalance < totalNeeded);
+          console.log('🔍 DETAILED FUNDING ANALYSIS:');
+          console.log('   Session has:', ethers.formatEther(sessionBalance), 'ETH');
+          console.log('   Needs total:', ethers.formatEther(totalNeeded), 'ETH');
+          console.log('   Pool has:', ethers.formatEther(masterPoolBalance), 'ETH');
+          console.log('   Deficit:', ethers.formatEther(totalNeeded - sessionBalance), 'ETH');
           
-          // Fund session wallet if needed
+          // Fund session wallet if needed using Pool contract
           if (sessionBalance < totalNeeded) {
             const fundingAmount = totalNeeded - sessionBalance + ethers.parseEther('0.01'); // Add buffer
             console.log('🏦 FUNDING SESSION WALLET REQUIRED!');
             console.log('   📊 Balance check:', ethers.formatEther(sessionBalance), '<', ethers.formatEther(totalNeeded));
             console.log('   💰 Funding amount:', ethers.formatEther(fundingAmount), 'ETH');
-            console.log('   📤 From (master):', masterWallet!.address);
+            console.log('   📤 From (Pool contract):', POOL_CONTRACT_ADDRESS);
             console.log('   📥 To (session):', currentSessionWallet.address);
             
-            // Check if master has enough funds
-            if (masterBalance < fundingAmount) {
-              throw new Error(`Master wallet insufficient funds: has ${ethers.formatEther(masterBalance)} ETH, needs ${ethers.formatEther(fundingAmount)} ETH`);
+            // Check if master has enough funds in Pool contract (reuse the already fetched balance)
+            if (masterPoolBalance < fundingAmount) {
+              throw new Error(`Pool contract insufficient funds: has ${ethers.formatEther(masterPoolBalance)} ETH, needs ${ethers.formatEther(fundingAmount)} ETH`);
             }
             
-            console.log('📡 Sending funding transaction...');
+            console.log('📡 Sending Pool withdraw transaction...');
             try {
-              const fundingTx = await connectedMasterWallet.sendTransaction({
-                to: currentSessionWallet.address,
-                value: fundingAmount,
-                gasLimit: 21000 // Simple transfer
-              });
+              console.log('🔗 Connecting Pool contract to master wallet...');
+              const connectedPoolContract = poolContract.connect(connectedMasterWallet);
+              console.log('✅ Pool contract connected');
               
-              console.log('⏳ Funding transaction sent:', fundingTx.hash);
+              console.log('🎯 Calling Pool withdraw function with params:');
+              console.log('   Destination:', currentSessionWallet.address);
+              console.log('   Amount:', ethers.formatEther(fundingAmount), 'ETH');
+              console.log('   Amount (wei):', fundingAmount.toString());
+              
+              const fundingTx = await connectedPoolContract.getFunction('withdraw')(currentSessionWallet.address, fundingAmount);
+              console.log('✅ Pool withdraw transaction created successfully');
+              
+              console.log('⏳ Pool withdraw transaction sent:', fundingTx.hash);
               console.log('🔗 View funding tx:', `https://sepolia.etherscan.io/tx/${fundingTx.hash}`);
               
-              console.log('⏳ Waiting for funding confirmation...');
+              console.log('⏳ Waiting for Pool withdraw confirmation...');
               const fundingReceipt = await fundingTx.wait();
-              console.log('✅ Funding transaction confirmed!');
-              console.log('📋 Funding receipt:', fundingReceipt);
+              console.log('✅ Pool withdraw transaction confirmed!');
+              console.log('📋 Pool withdraw receipt:', fundingReceipt);
               
-              // Verify new balance
-              const newSessionBalance = await provider.getBalance(currentSessionWallet.address);
-              console.log('💰 New session wallet balance:', ethers.formatEther(newSessionBalance), 'ETH');
-              console.log('✅ Funding verification:', newSessionBalance >= totalNeeded ? 'SUCCESS' : 'FAILED');
+              // Wait and retry balance checking since it may take time to propagate
+              let newSessionBalance = 0n;
+              let attempts = 0;
+              const maxAttempts = 5;
+              
+              while (attempts < maxAttempts) {
+                console.log(`⏳ Checking balance (attempt ${attempts + 1}/${maxAttempts})...`);
+                newSessionBalance = await provider.getBalance(currentSessionWallet.address);
+                console.log('💰 Session wallet balance:', ethers.formatEther(newSessionBalance), 'ETH');
+                
+                if (newSessionBalance >= totalNeeded) {
+                  console.log('✅ Funding verification: SUCCESS');
+                  break;
+                }
+                
+                if (attempts < maxAttempts - 1) {
+                  console.log('⏳ Balance still insufficient, waiting 3 seconds before retry...');
+                  await new Promise(resolve => setTimeout(resolve, 3000));
+                }
+                attempts++;
+              }
+              
+              // Final check after all attempts
+              if (newSessionBalance < totalNeeded) {
+                const stillNeeded = totalNeeded - newSessionBalance;
+                console.log('❌ Funding verification: FAILED after', maxAttempts, 'attempts');
+                throw new Error(`Funding incomplete! Session wallet still needs ${ethers.formatEther(stillNeeded)} ETH more. Pool withdraw transaction was confirmed but balance not updated after ${maxAttempts} attempts.`);
+              }
               
             } catch (fundingError: any) {
-              console.error('💥 FUNDING TRANSACTION FAILED:', fundingError);
+              console.error('💥 POOL WITHDRAW FUNDING FAILED:', fundingError);
               console.error('Error details:', {
                 message: fundingError?.message || 'Unknown error',
                 code: fundingError?.code || 'No code',
                 reason: fundingError?.reason || 'No reason'
               });
-              throw new Error(`Funding failed: ${fundingError?.message || 'Unknown error'}`);
+              
+              // Fallback to direct wallet transfer if Pool contract fails
+              console.log('🔄 ATTEMPTING FALLBACK: Direct wallet transfer...');
+              try {
+                // Check if master has enough direct funds for fallback
+                const masterDirectBalance = await provider.getBalance(masterWallet!.address);
+                console.log('🏛️ Master direct balance:', ethers.formatEther(masterDirectBalance), 'ETH');
+                
+                if (masterDirectBalance < fundingAmount) {
+                  throw new Error(`Both Pool and direct wallet insufficient funds. Pool error: ${fundingError?.message || 'Unknown'}. Direct wallet has ${ethers.formatEther(masterDirectBalance)} ETH, needs ${ethers.formatEther(fundingAmount)} ETH`);
+                }
+                
+                console.log('📡 Sending direct wallet transfer as fallback...');
+                const fallbackTx = await connectedMasterWallet.sendTransaction({
+                  to: currentSessionWallet.address,
+                  value: fundingAmount,
+                  gasLimit: 21000 // Simple transfer
+                });
+                
+                console.log('⏳ Fallback transfer sent:', fallbackTx.hash);
+                await fallbackTx.wait();
+                console.log('✅ Fallback transfer confirmed!');
+                
+                // Verify fallback worked
+                const finalBalance = await provider.getBalance(currentSessionWallet.address);
+                console.log('💰 Final session balance after fallback:', ethers.formatEther(finalBalance), 'ETH');
+                
+                if (finalBalance < totalNeeded) {
+                  const stillNeeded = totalNeeded - finalBalance;
+                  throw new Error(`Even fallback transfer failed! Still need ${ethers.formatEther(stillNeeded)} ETH more.`);
+                }
+                
+              } catch (fallbackError: any) {
+                console.error('💥 FALLBACK ALSO FAILED:', fallbackError);
+                throw new Error(`Both Pool withdraw and fallback failed. Pool: ${fundingError?.message || 'Unknown'}. Fallback: ${fallbackError?.message || 'Unknown'}`);
+              }
             }
           } else {
             console.log('✅ Session wallet has sufficient balance - no funding needed');
@@ -472,10 +573,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           
           // Resolve the pending promise with real hash
           pendingTx.resolve(txResponse.hash);
-          pendingTransactions.delete(txId);
           
           console.log('⏳ Waiting for confirmation...');
-          // Optionally wait for confirmation (don't block UI)
+          // Wait for confirmation in background (don't block UI)
           txResponse.wait().then((receipt) => {
             if (receipt) {
               console.log('🎉 Transaction confirmed!', receipt);
@@ -485,8 +585,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           }).catch((error: any) => {
             console.error('❌ Transaction failed:', error);
           });
-          
-          sendResponse({ success: true, hash: txResponse.hash });
           
         } catch (error: any) {
           console.error('💥💥💥 TRANSACTION SUBMISSION COMPLETELY FAILED 💥💥💥');
@@ -505,9 +603,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           }
           
           pendingTx.reject(error);
-          pendingTransactions.delete(txId);
-          sendResponse({ error: error?.message || 'Transaction failed' });
         }
+        })(); // Close the async IIFE
       }
       
       if (msg.type === 'rejectTransaction') {
@@ -660,7 +757,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const poolContract = new ethers.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, connectedMasterWallet);
           
           // Use withdraw method instead of direct transfer
-          const fundingTx = await poolContract.withdraw(sessionAddress, requiredWei);
+          const fundingTx = await poolContract.getFunction('withdraw')(sessionAddress, requiredWei);
           
           console.log(`📝 Pool withdraw transaction sent: ${fundingTx.hash}`);
           console.log(`🔗 View on Etherscan: https://sepolia.etherscan.io/tx/${fundingTx.hash}`);
@@ -697,7 +794,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           const provider = new ethers.JsonRpcProvider('https://ethereum-sepolia-rpc.publicnode.com');
           const poolContract = new ethers.Contract(POOL_CONTRACT_ADDRESS, POOL_ABI, provider);
           
-          const balance = await poolContract.getBalance(masterWallet.address);
+          const balance = await poolContract.getFunction('getBalance')(masterWallet.address);
           const balanceInEth = ethers.formatEther(balance);
           
           sendResponse({ balance: balanceInEth });
@@ -724,7 +821,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           
           const depositAmount = ethers.parseEther(amount);
           
-          const depositTx = await poolContract.deposit({ value: depositAmount });
+          const depositTx = await poolContract.getFunction('deposit')({ value: depositAmount });
           
           console.log(`📝 Pool deposit transaction sent: ${depositTx.hash}`);
           console.log(`🔗 View on Etherscan: https://sepolia.etherscan.io/tx/${depositTx.hash}`);
@@ -734,7 +831,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           console.log('✅ Pool deposit transaction confirmed!');
           
           // Get updated pool balance
-          const newPoolBalance = await poolContract.getBalance(masterWallet.address);
+          const newPoolBalance = await poolContract.getFunction('getBalance')(masterWallet.address);
           console.log(`💰 New pool balance: ${ethers.formatEther(newPoolBalance)} ETH`);
           
           sendResponse({ 

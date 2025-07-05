@@ -798,7 +798,7 @@
   var require_react_dom_production = __commonJS({
     "node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
-      var React2 = require_react();
+      var React = require_react();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
         if (1 < arguments.length) {
@@ -838,7 +838,7 @@
           implementation
         };
       }
-      var ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       function getCrossOriginStringAs(as, input) {
         if ("font" === as) return "";
         if ("string" === typeof input)
@@ -974,7 +974,7 @@
     "node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
-      var React2 = require_react();
+      var React = require_react();
       var ReactDOM = require_react_dom();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
@@ -1162,7 +1162,7 @@
         return null;
       }
       var isArrayImpl = Array.isArray;
-      var ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var sharedNotPendingObject = {
         pending: false,
@@ -12154,7 +12154,7 @@
           0 === i && attemptExplicitHydrationTarget(target);
         }
       };
-      var isomorphicReactPackageVersion$jscomp$inline_1785 = React2.version;
+      var isomorphicReactPackageVersion$jscomp$inline_1785 = React.version;
       if ("19.1.0" !== isomorphicReactPackageVersion$jscomp$inline_1785)
         throw Error(
           formatProdErrorMessage(
@@ -54918,7 +54918,6 @@ ${prettyStateOverride(stateOverride)}`;
           destinationChain: 11155111 /* ETH_SEPOLIA */,
           tokenType: "USDC"
         });
-        const [estimatedGasCost, setEstimatedGasCost] = (0, import_react2.useState)("0.0023");
         const { currentStep, logs, error: transferError, messageId, executeCCIPTransfer, reset } = useCCIPTransfer();
         (0, import_react2.useEffect)(() => {
           loadExistingWallet();
@@ -55301,7 +55300,7 @@ ${prettyStateOverride(stateOverride)}`;
                                 textDecoration: "underline"
                               },
                               title: "View on Etherscan",
-                              children: "\u{1F4CA}"
+                              children: "\u{1F50E}"
                             }
                           ) })
                         ] }),

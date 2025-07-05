@@ -41,7 +41,10 @@ const build = async () => {
 
     // Copy manifest.json and inject.js
     copyFile('public/manifest.json', 'dist/manifest.json');
+    copyFile('public/icon16.png', 'dist/icon16.png');
     copyFile('public/icon32.png', 'dist/icon32.png');
+    copyFile('public/icon192.png', 'dist/icon192.png');
+    copyFile('public/icon512.png', 'dist/icon512.png');
     copyFile('public/usdc-logo.png', 'dist/usdc-logo.png');
     copyFile('src/inject.js', 'dist/inject.js');
 

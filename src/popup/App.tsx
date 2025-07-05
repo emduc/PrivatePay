@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { useCCIPTransfer } from '../hooks/useCCIPTransfer';
 import { CCIPSupportedChainId, CCIP_CHAIN_ID_TO_NAME } from '../lib/ccipChains';
@@ -48,7 +48,6 @@ const App = () => {
     destinationChain: CCIPSupportedChainId.ETH_SEPOLIA,
     tokenType: "USDC"
   });
-  const [estimatedGasCost, setEstimatedGasCost] = useState('0.0023');
   
   const { currentStep, logs, error: transferError, messageId, executeCCIPTransfer, reset } = useCCIPTransfer();
 
@@ -484,7 +483,7 @@ const App = () => {
                                 }}
                                 title="View on Etherscan"
                               >
-                                📊
+                                🔎
                               </span>
                             </div>
                           </div>
