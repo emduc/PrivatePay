@@ -36828,10 +36828,22 @@
         const [addressSpoofing, setAddressSpoofing] = (0, import_react.useState)(false);
         const [showSessionList, setShowSessionList] = (0, import_react.useState)(false);
         const [sessionAddresses, setSessionAddresses] = (0, import_react.useState)([]);
+        const [masterBalance, setMasterBalance] = (0, import_react.useState)("0");
         (0, import_react.useEffect)(() => {
           loadExistingWallet();
           loadAddressSpoofing();
+          loadMasterBalance();
         }, []);
+        const loadMasterBalance = async () => {
+          try {
+            const response = await chrome.runtime.sendMessage({ type: "getMasterBalance" });
+            if (response && !response.error) {
+              setMasterBalance(response.balance);
+            }
+          } catch (err) {
+            console.error("Error loading master balance:", err);
+          }
+        };
         const loadAddressSpoofing = async () => {
           try {
             const result = await chrome.storage.local.get(["addressSpoofing"]);
@@ -36880,6 +36892,7 @@
             const response = await chrome.runtime.sendMessage({ type: "getWalletInfo" });
             if (response && !response.error) {
               setWalletInfo(response);
+              loadMasterBalance();
             }
             await loadPendingTransactions();
           } catch (err) {
@@ -37111,6 +37124,13 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: "12px", color: "#6c757d" }, children: [
                 "Sessions Generated: ",
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: walletInfo.sessionCount })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: "12px", color: "#6c757d", marginTop: "5px" }, children: [
+                "Available: ",
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { style: { color: "#28a745" }, children: [
+                  masterBalance,
+                  " ETH"
+                ] })
               ] })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {

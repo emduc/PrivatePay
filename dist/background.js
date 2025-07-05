@@ -24973,6 +24973,22 @@
                 sendResponse({ error: "Failed to switch session" });
               }
             }
+            if (msg.type === "getMasterBalance") {
+              if (!masterWallet) {
+                sendResponse({ error: "No master wallet available" });
+                return;
+              }
+              try {
+                const provider = new ethers_exports.JsonRpcProvider("https://ethereum-sepolia-rpc.publicnode.com");
+                const balance = await provider.getBalance(masterWallet.address);
+                const balanceInEth = ethers_exports.formatEther(balance);
+                const formattedBalance = parseFloat(balanceInEth).toFixed(4);
+                sendResponse({ balance: formattedBalance });
+              } catch (error) {
+                console.error("Error getting master balance:", error);
+                sendResponse({ error: "Failed to get balance" });
+              }
+            }
           } catch (error) {
             console.error("Background script error:", error);
             sendResponse({ error: "Internal error" });

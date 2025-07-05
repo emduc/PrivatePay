@@ -30,11 +30,24 @@ const App = () => {
   const [addressSpoofing, setAddressSpoofing] = useState(false);
   const [showSessionList, setShowSessionList] = useState(false);
   const [sessionAddresses, setSessionAddresses] = useState<SessionAddress[]>([]);
+  const [masterBalance, setMasterBalance] = useState<string>('0');
 
   useEffect(() => {
     loadExistingWallet();
     loadAddressSpoofing();
+    loadMasterBalance();
   }, []);
+
+  const loadMasterBalance = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'getMasterBalance' });
+      if (response && !response.error) {
+        setMasterBalance(response.balance);
+      }
+    } catch (err) {
+      console.error('Error loading master balance:', err);
+    }
+  };
 
   const loadAddressSpoofing = async () => {
     try {
@@ -88,6 +101,8 @@ const App = () => {
       const response = await chrome.runtime.sendMessage({ type: 'getWalletInfo' });
       if (response && !response.error) {
         setWalletInfo(response);
+        // Reload balance when wallet info changes
+        loadMasterBalance();
       }
       await loadPendingTransactions();
     } catch (err) {
@@ -367,6 +382,10 @@ const App = () => {
             
             <div style={{ fontSize: '12px', color: '#6c757d' }}>
               Sessions Generated: <strong>{walletInfo.sessionCount}</strong>
+            </div>
+            
+            <div style={{ fontSize: '12px', color: '#6c757d', marginTop: '5px' }}>
+              Available: <strong style={{ color: '#28a745' }}>{masterBalance} ETH</strong>
             </div>
           </div>
           

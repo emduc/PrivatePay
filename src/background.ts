@@ -576,6 +576,28 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ error: 'Failed to switch session' });
         }
       }
+      
+      if (msg.type === 'getMasterBalance') {
+        if (!masterWallet) {
+          sendResponse({ error: 'No master wallet available' });
+          return;
+        }
+        
+        try {
+          // Create provider to check balance
+          const provider = new ethers.JsonRpcProvider('https://ethereum-sepolia-rpc.publicnode.com');
+          const balance = await provider.getBalance(masterWallet.address);
+          const balanceInEth = ethers.formatEther(balance);
+          
+          // Format to 4 decimal places
+          const formattedBalance = parseFloat(balanceInEth).toFixed(4);
+          
+          sendResponse({ balance: formattedBalance });
+        } catch (error) {
+          console.error('Error getting master balance:', error);
+          sendResponse({ error: 'Failed to get balance' });
+        }
+      }
     } catch (error) {
       console.error('Background script error:', error);
       sendResponse({ error: 'Internal error' });
