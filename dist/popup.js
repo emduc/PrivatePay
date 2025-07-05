@@ -55331,13 +55331,6 @@ ${prettyStateOverride(stateOverride)}`;
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: walletInfo.sessionCount })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: "12px", color: "#6c757d", marginTop: "5px" }, children: [
-                "Available: ",
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { style: { color: "#28a745" }, children: [
-                  masterBalance,
-                  " ETH"
-                ] })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: "12px", color: "#6c757d", marginTop: "5px" }, children: [
                 "Pool Balance: ",
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { style: { color: "#007bff" }, children: [
                   poolBalance,
