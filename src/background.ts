@@ -24,6 +24,35 @@ let pendingTransactions: Map<string, {
   processing?: boolean; // Add flag to prevent double processing
 }> = new Map();
 
+// Transaction progress tracking
+let activeTransactionProgress: {
+  txId: string;
+  currentStep: number;
+  totalSteps: number;
+  stepName: string;
+  status: 'processing' | 'completed' | 'error';
+  txHash?: string;
+  error?: string;
+} | null = null;
+
+const updateTransactionProgress = (txId: string, currentStep: number, totalSteps: number, stepName: string, status: 'processing' | 'completed' | 'error', txHash?: string, error?: string) => {
+  activeTransactionProgress = {
+    txId,
+    currentStep,
+    totalSteps,
+    stepName,
+    status,
+    txHash,
+    error
+  };
+  console.log(`📊 Transaction Progress: ${currentStep}/${totalSteps} - ${stepName} (${status})`);
+};
+
+const clearTransactionProgress = () => {
+  activeTransactionProgress = null;
+  console.log('🧹 Transaction progress cleared');
+};
+
 const initializeMasterWallet = async () => {
   try {
     const result = await chrome.storage.local.get(['seedPhrase', 'sessionCounter', 'addressSpoofing']);
@@ -312,6 +341,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         
         console.log('🔧 Starting transaction execution...');
         
+        // Initialize progress tracking (we'll adjust total steps later based on funding needs)
+        updateTransactionProgress(txId, 0, 2, 'Preparing transaction...', 'processing');
+        
         // Remove from pending list immediately to close UI
         pendingTransactions.delete(txId);
         
@@ -440,6 +472,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           
           // Fund session wallet if needed using Pool contract
           if (sessionBalance < totalNeeded) {
+            // Update progress: Step 1 - Withdrawing from Pool
+            updateTransactionProgress(txId, 1, 2, 'Withdrawing from Pool contract...', 'processing');
+            
             const fundingAmount = totalNeeded - sessionBalance + ethers.parseEther('0.01'); // Add buffer
             console.log('🏦 FUNDING SESSION WALLET REQUIRED!');
             console.log('   📊 Balance check:', ethers.formatEther(sessionBalance), '<', ethers.formatEther(totalNeeded));
@@ -503,6 +538,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
                 throw new Error(`Funding incomplete! Session wallet still needs ${ethers.formatEther(stillNeeded)} ETH more. Pool withdraw transaction was confirmed but balance not updated after ${maxAttempts} attempts.`);
               }
               
+              // Update progress: Pool withdraw completed successfully
+              updateTransactionProgress(txId, 1, 2, 'Pool withdraw completed successfully', 'processing');
+              
             } catch (fundingError: any) {
               console.error('💥 POOL WITHDRAW FUNDING FAILED:', fundingError);
               console.error('Error details:', {
@@ -549,7 +587,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             }
           } else {
             console.log('✅ Session wallet has sufficient balance - no funding needed');
+            // Update progress: Step 1 completed (no funding needed)
+            updateTransactionProgress(txId, 1, 2, 'Funding check completed', 'processing');
           }
+          
+          // Update progress: Step 2 - Executing transaction
+          updateTransactionProgress(txId, 2, 2, 'Executing transaction...', 'processing');
           
           // Prepare transaction - use the exact params from dApp  
           const txRequest = {
@@ -571,6 +614,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           console.log('✅ Transaction submitted! Hash:', txResponse.hash);
           console.log('🔍 View on Etherscan:', `https://sepolia.etherscan.io/tx/${txResponse.hash}`);
           
+          // Update progress: Transaction submitted successfully
+          updateTransactionProgress(txId, 2, 2, 'Transaction submitted successfully', 'completed', txResponse.hash);
+          
           // Resolve the pending promise with real hash
           pendingTx.resolve(txResponse.hash);
           
@@ -581,9 +627,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
               console.log('🎉 Transaction confirmed!', receipt);
               console.log('Gas used:', receipt.gasUsed.toString());
               console.log('Block number:', receipt.blockNumber);
+              // Clear progress after confirmation
+              setTimeout(() => clearTransactionProgress(), 5000); // Clear after 5 seconds
             }
           }).catch((error: any) => {
             console.error('❌ Transaction failed:', error);
+            updateTransactionProgress(txId, 2, 2, 'Transaction failed', 'error', undefined, error.message);
+            setTimeout(() => clearTransactionProgress(), 10000); // Clear after 10 seconds on error
           });
           
         } catch (error: any) {
@@ -601,6 +651,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             console.error('   This means the funding mechanism failed or was skipped');
             console.error('   Check if the funding logs appeared above');
           }
+          
+          // Update progress: Error occurred
+          updateTransactionProgress(txId, 0, 2, 'Transaction failed', 'error', undefined, error?.message || 'Unknown error');
+          setTimeout(() => clearTransactionProgress(), 10000); // Clear after 10 seconds on error
           
           pendingTx.reject(error);
         }
@@ -802,6 +856,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           console.error('Error getting pool balance:', error);
           sendResponse({ error: 'Failed to get pool balance' });
         }
+      }
+      
+      if (msg.type === 'getTransactionProgress') {
+        sendResponse({ progress: activeTransactionProgress });
       }
       
       if (msg.type === 'depositToPool') {

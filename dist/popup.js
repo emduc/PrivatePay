@@ -54912,6 +54912,7 @@ ${prettyStateOverride(stateOverride)}`;
         const [showDepositSuggestion, setShowDepositSuggestion] = (0, import_react2.useState)(false);
         const [showPayUSDC, setShowPayUSDC] = (0, import_react2.useState)(false);
         const [showPaymentOverview, setShowPaymentOverview] = (0, import_react2.useState)(false);
+        const [transactionProgress, setTransactionProgress] = (0, import_react2.useState)(null);
         const [paymentForm, setPaymentForm] = (0, import_react2.useState)({
           destinationAddress: "",
           amount: "",
@@ -54924,6 +54925,8 @@ ${prettyStateOverride(stateOverride)}`;
           loadAddressSpoofing();
           loadMasterBalance();
           loadPoolBalance();
+          const progressInterval = setInterval(loadTransactionProgress, 1e3);
+          return () => clearInterval(progressInterval);
         }, []);
         const loadMasterBalance = async () => {
           try {
@@ -54943,6 +54946,18 @@ ${prettyStateOverride(stateOverride)}`;
             }
           } catch (err) {
             console.error("Error loading pool balance:", err);
+          }
+        };
+        const loadTransactionProgress = async () => {
+          try {
+            const response = await chrome.runtime.sendMessage({ type: "getTransactionProgress" });
+            if (response && response.progress) {
+              setTransactionProgress(response.progress);
+            } else {
+              setTransactionProgress(null);
+            }
+          } catch (err) {
+            console.error("Error loading transaction progress:", err);
           }
         };
         const depositToPool = async (amount) => {
@@ -55872,39 +55887,79 @@ ${prettyStateOverride(stateOverride)}`;
                 }, children: logs.map((log, index2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: "2px", lineHeight: "1.2" }, children: log }, index2)) })
               ] })
             ] }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
-              marginBottom: "15px",
-              padding: "12px",
-              backgroundColor: "#fff3cd",
-              border: "1px solid #ffeaa7",
-              borderRadius: "4px"
+            transactionProgress && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+              marginBottom: "20px",
+              padding: "15px",
+              backgroundColor: transactionProgress.status === "error" ? "#f8d7da" : transactionProgress.status === "completed" ? "#d4edda" : "#e7f3ff",
+              border: `2px solid ${transactionProgress.status === "error" ? "#dc3545" : transactionProgress.status === "completed" ? "#28a745" : "#007bff"}`,
+              borderRadius: "8px"
             }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { style: { fontSize: "13px", color: "#856404", margin: "0 0 10px 0" }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u{1F504} Fresh Address Mode:" }),
-                " Each time you connect to a dApp, a new address will be generated for enhanced privacy."
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("h4", { style: {
+                margin: "0 0 10px 0",
+                color: transactionProgress.status === "error" ? "#721c24" : transactionProgress.status === "completed" ? "#155724" : "#0056b3",
+                fontSize: "14px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px"
+              }, children: [
+                transactionProgress.status === "processing" && "\u23F3",
+                transactionProgress.status === "completed" && "\u2705",
+                transactionProgress.status === "error" && "\u274C",
+                "Transaction Progress"
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "8px" }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                  "input",
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                width: "100%",
+                height: "8px",
+                backgroundColor: "#e9ecef",
+                borderRadius: "4px",
+                marginBottom: "10px",
+                overflow: "hidden"
+              }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                width: `${transactionProgress.currentStep / transactionProgress.totalSteps * 100}%`,
+                height: "100%",
+                backgroundColor: transactionProgress.status === "error" ? "#dc3545" : transactionProgress.status === "completed" ? "#28a745" : "#007bff",
+                transition: "width 0.3s ease"
+              } }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: "12px", marginBottom: "8px" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+                  "Step ",
+                  transactionProgress.currentStep,
+                  "/",
+                  transactionProgress.totalSteps,
+                  ":"
+                ] }),
+                " ",
+                transactionProgress.stepName
+              ] }),
+              transactionProgress.txHash && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: "11px", marginBottom: "8px" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "Transaction:" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                  fontFamily: "monospace",
+                  wordBreak: "break-all",
+                  fontSize: "10px",
+                  marginTop: "2px"
+                }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "a",
                   {
-                    type: "checkbox",
-                    id: "addressSpoofing",
-                    checked: addressSpoofing,
-                    onChange: toggleAddressSpoofing,
-                    style: { cursor: "pointer" }
+                    href: `https://sepolia.etherscan.io/tx/${transactionProgress.txHash}`,
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                    style: { color: "#007bff", textDecoration: "underline" },
+                    children: transactionProgress.txHash
                   }
-                ),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-                  "label",
-                  {
-                    htmlFor: "addressSpoofing",
-                    style: { fontSize: "12px", color: "#856404", cursor: "pointer" },
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u{1F3AD} Address Spoofing:" }),
-                      " Show fake rich address to dApps to enable actions."
-                    ]
-                  }
-                )
+                ) })
+              ] }),
+              transactionProgress.error && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+                fontSize: "11px",
+                color: "#721c24",
+                backgroundColor: "#f8d7da",
+                padding: "6px",
+                borderRadius: "3px",
+                border: "1px solid #f5c6cb"
+              }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "Error:" }),
+                " ",
+                transactionProgress.error
               ] })
             ] }),
             pendingTransactions.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
@@ -55976,6 +56031,41 @@ ${prettyStateOverride(stateOverride)}`;
                   )
                 ] })
               ] }, tx.id))
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+              marginBottom: "15px",
+              padding: "12px",
+              backgroundColor: "#fff3cd",
+              border: "1px solid #ffeaa7",
+              borderRadius: "4px"
+            }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { style: { fontSize: "13px", color: "#856404", margin: "0 0 10px 0" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u{1F504} Fresh Address Mode:" }),
+                " Each time you connect to a dApp, a new address will be generated for enhanced privacy."
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: "8px" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    type: "checkbox",
+                    id: "addressSpoofing",
+                    checked: addressSpoofing,
+                    onChange: toggleAddressSpoofing,
+                    style: { cursor: "pointer" }
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  "label",
+                  {
+                    htmlFor: "addressSpoofing",
+                    style: { fontSize: "12px", color: "#856404", cursor: "pointer" },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u{1F3AD} Address Spoofing:" }),
+                      " Show fake rich address to dApps to enable actions."
+                    ]
+                  }
+                )
+              ] })
             ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {

@@ -37,6 +37,15 @@ const App = () => {
   const [showDepositSuggestion, setShowDepositSuggestion] = useState(false);
   const [showPayUSDC, setShowPayUSDC] = useState(false);
   const [showPaymentOverview, setShowPaymentOverview] = useState(false);
+  const [transactionProgress, setTransactionProgress] = useState<{
+    txId: string;
+    currentStep: number;
+    totalSteps: number;
+    stepName: string;
+    status: 'processing' | 'completed' | 'error';
+    txHash?: string;
+    error?: string;
+  } | null>(null);
   const [paymentForm, setPaymentForm] = useState<{
     destinationAddress: string;
     amount: string;
@@ -56,6 +65,10 @@ const App = () => {
     loadAddressSpoofing();
     loadMasterBalance();
     loadPoolBalance();
+    
+    // Poll for transaction progress updates
+    const progressInterval = setInterval(loadTransactionProgress, 1000);
+    return () => clearInterval(progressInterval);
   }, []);
 
   const loadMasterBalance = async () => {
@@ -77,6 +90,19 @@ const App = () => {
       }
     } catch (err) {
       console.error('Error loading pool balance:', err);
+    }
+  };
+
+  const loadTransactionProgress = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'getTransactionProgress' });
+      if (response && response.progress) {
+        setTransactionProgress(response.progress);
+      } else {
+        setTransactionProgress(null);
+      }
+    } catch (err) {
+      console.error('Error loading transaction progress:', err);
     }
   };
 
@@ -273,7 +299,7 @@ const App = () => {
         <div>
           <div style={{ marginBottom: '15px' }}>
             <label style={{ display: 'block', marginBottom: '5px', color: '#666' }}>
-              Enter 12-word seed phrase:
+              Enter 12-word PrivacyPools secret:
             </label>
             <textarea
               rows={3}
@@ -533,7 +559,7 @@ const App = () => {
                 💰 Deposit Suggestion
               </h4>
               <p style={{ fontSize: '12px', color: '#0056b3', margin: '0 0 15px 0' }}>
-                To enable secure transactions, consider depositing 90% of your balance ({(parseFloat(masterBalance) * 0.9).toFixed(4)} ETH) to the Pool contract.
+                To enable secure transactions, consider depositing some of your balance ({(parseFloat(masterBalance) * 0.5).toFixed(4)} ETH) to the Pool contract.
               </p>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
@@ -554,7 +580,7 @@ const App = () => {
                 <button
                   onClick={async () => {
                     try {
-                      const depositAmount = (parseFloat(masterBalance) * 0.9).toFixed(4);
+                      const depositAmount = (parseFloat(masterBalance) * 0.5).toFixed(4);
                       await depositToPool(depositAmount);
                     } catch (error) {
                       console.error('Deposit failed:', error);
@@ -1081,35 +1107,93 @@ const App = () => {
               </div>
             )}
           </div>
-          
-          <div style={{ 
-            marginBottom: '15px',
-            padding: '12px',
-            backgroundColor: '#fff3cd',
-            border: '1px solid #ffeaa7',
-            borderRadius: '4px'
-          }}>
-            <p style={{ fontSize: '13px', color: '#856404', margin: '0 0 10px 0' }}>
-              <strong>🔄 Fresh Address Mode:</strong> Each time you connect to a dApp, 
-              a new address will be generated for enhanced privacy.
-            </p>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="checkbox"
-                id="addressSpoofing"
-                checked={addressSpoofing}
-                onChange={toggleAddressSpoofing}
-                style={{ cursor: 'pointer' }}
-              />
-              <label 
-                htmlFor="addressSpoofing" 
-                style={{ fontSize: '12px', color: '#856404', cursor: 'pointer' }}
-              >
-                <strong>🎭 Address Spoofing:</strong> Show fake rich address to dApps to enable actions.
-              </label>
+
+          {/* Transaction Progress */}
+          {transactionProgress && (
+            <div style={{ 
+              marginBottom: '20px',
+              padding: '15px',
+              backgroundColor: transactionProgress.status === 'error' ? '#f8d7da' : 
+                              transactionProgress.status === 'completed' ? '#d4edda' : '#e7f3ff',
+              border: `2px solid ${transactionProgress.status === 'error' ? '#dc3545' : 
+                                   transactionProgress.status === 'completed' ? '#28a745' : '#007bff'}`,
+              borderRadius: '8px'
+            }}>
+              <h4 style={{ 
+                margin: '0 0 10px 0', 
+                color: transactionProgress.status === 'error' ? '#721c24' : 
+                       transactionProgress.status === 'completed' ? '#155724' : '#0056b3', 
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                {transactionProgress.status === 'processing' && '⏳'}
+                {transactionProgress.status === 'completed' && '✅'}
+                {transactionProgress.status === 'error' && '❌'}
+                Transaction Progress
+              </h4>
+              
+              {/* Progress Bar */}
+              <div style={{
+                width: '100%',
+                height: '8px',
+                backgroundColor: '#e9ecef',
+                borderRadius: '4px',
+                marginBottom: '10px',
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  width: `${(transactionProgress.currentStep / transactionProgress.totalSteps) * 100}%`,
+                  height: '100%',
+                  backgroundColor: transactionProgress.status === 'error' ? '#dc3545' : 
+                                   transactionProgress.status === 'completed' ? '#28a745' : '#007bff',
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+              
+              {/* Step Info */}
+              <div style={{ fontSize: '12px', marginBottom: '8px' }}>
+                <strong>Step {transactionProgress.currentStep}/{transactionProgress.totalSteps}:</strong> {transactionProgress.stepName}
+              </div>
+              
+              {/* Transaction Hash */}
+              {transactionProgress.txHash && (
+                <div style={{ fontSize: '11px', marginBottom: '8px' }}>
+                  <strong>Transaction:</strong>
+                  <div style={{ 
+                    fontFamily: 'monospace', 
+                    wordBreak: 'break-all',
+                    fontSize: '10px',
+                    marginTop: '2px'
+                  }}>
+                    <a 
+                      href={`https://sepolia.etherscan.io/tx/${transactionProgress.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#007bff', textDecoration: 'underline' }}
+                    >
+                      {transactionProgress.txHash}
+                    </a>
+                  </div>
+                </div>
+              )}
+              
+              {/* Error Message */}
+              {transactionProgress.error && (
+                <div style={{ 
+                  fontSize: '11px', 
+                  color: '#721c24',
+                  backgroundColor: '#f8d7da',
+                  padding: '6px',
+                  borderRadius: '3px',
+                  border: '1px solid #f5c6cb'
+                }}>
+                  <strong>Error:</strong> {transactionProgress.error}
+                </div>
+              )}
             </div>
-          </div>
+          )}
 
           {pendingTransactions.length > 0 && (
             <div style={{ 
@@ -1182,6 +1266,35 @@ const App = () => {
               ))}
             </div>
           )}
+          
+          <div style={{ 
+            marginBottom: '15px',
+            padding: '12px',
+            backgroundColor: '#fff3cd',
+            border: '1px solid #ffeaa7',
+            borderRadius: '4px'
+          }}>
+            <p style={{ fontSize: '13px', color: '#856404', margin: '0 0 10px 0' }}>
+              <strong>🔄 Fresh Address Mode:</strong> Each time you connect to a dApp, 
+              a new address will be generated for enhanced privacy.
+            </p>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                id="addressSpoofing"
+                checked={addressSpoofing}
+                onChange={toggleAddressSpoofing}
+                style={{ cursor: 'pointer' }}
+              />
+              <label 
+                htmlFor="addressSpoofing" 
+                style={{ fontSize: '12px', color: '#856404', cursor: 'pointer' }}
+              >
+                <strong>🎭 Address Spoofing:</strong> Show fake rich address to dApps to enable actions.
+              </label>
+            </div>
+          </div>
           
         </div>
       )}

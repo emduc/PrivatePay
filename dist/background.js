@@ -24655,6 +24655,23 @@
       var SPOOFED_ADDRESS = "0xA6a49d09321f701AB4295e5eB115E65EcF9b83B5";
       var addressSpoofingEnabled = false;
       var pendingTransactions = /* @__PURE__ */ new Map();
+      var activeTransactionProgress = null;
+      var updateTransactionProgress = (txId, currentStep, totalSteps, stepName, status, txHash, error) => {
+        activeTransactionProgress = {
+          txId,
+          currentStep,
+          totalSteps,
+          stepName,
+          status,
+          txHash,
+          error
+        };
+        console.log(`\u{1F4CA} Transaction Progress: ${currentStep}/${totalSteps} - ${stepName} (${status})`);
+      };
+      var clearTransactionProgress = () => {
+        activeTransactionProgress = null;
+        console.log("\u{1F9F9} Transaction progress cleared");
+      };
       var initializeMasterWallet = async () => {
         try {
           const result = await chrome.storage.local.get(["seedPhrase", "sessionCounter", "addressSpoofing"]);
@@ -24877,6 +24894,7 @@
               console.log("Current session wallet exists?", !!currentSessionWallet);
               console.log("Master wallet exists?", !!masterWallet);
               console.log("\u{1F527} Starting transaction execution...");
+              updateTransactionProgress(txId, 0, 2, "Preparing transaction...", "processing");
               pendingTransactions.delete(txId);
               sendResponse({ success: true, message: "Transaction approved and processing started" });
               (async () => {
@@ -24975,6 +24993,7 @@
                   console.log("   Pool has:", ethers_exports.formatEther(masterPoolBalance), "ETH");
                   console.log("   Deficit:", ethers_exports.formatEther(totalNeeded - sessionBalance), "ETH");
                   if (sessionBalance < totalNeeded) {
+                    updateTransactionProgress(txId, 1, 2, "Withdrawing from Pool contract...", "processing");
                     const fundingAmount = totalNeeded - sessionBalance + ethers_exports.parseEther("0.01");
                     console.log("\u{1F3E6} FUNDING SESSION WALLET REQUIRED!");
                     console.log("   \u{1F4CA} Balance check:", ethers_exports.formatEther(sessionBalance), "<", ethers_exports.formatEther(totalNeeded));
@@ -25023,6 +25042,7 @@
                         console.log("\u274C Funding verification: FAILED after", maxAttempts, "attempts");
                         throw new Error(`Funding incomplete! Session wallet still needs ${ethers_exports.formatEther(stillNeeded)} ETH more. Pool withdraw transaction was confirmed but balance not updated after ${maxAttempts} attempts.`);
                       }
+                      updateTransactionProgress(txId, 1, 2, "Pool withdraw completed successfully", "processing");
                     } catch (fundingError) {
                       console.error("\u{1F4A5} POOL WITHDRAW FUNDING FAILED:", fundingError);
                       console.error("Error details:", {
@@ -25060,7 +25080,9 @@
                     }
                   } else {
                     console.log("\u2705 Session wallet has sufficient balance - no funding needed");
+                    updateTransactionProgress(txId, 1, 2, "Funding check completed", "processing");
                   }
+                  updateTransactionProgress(txId, 2, 2, "Executing transaction...", "processing");
                   const txRequest = {
                     to: pendingTx.txParams.to,
                     value: pendingTx.txParams.value || "0x0",
@@ -25076,6 +25098,7 @@
                   const txResponse = await connectedSessionWallet.sendTransaction(txRequest);
                   console.log("\u2705 Transaction submitted! Hash:", txResponse.hash);
                   console.log("\u{1F50D} View on Etherscan:", `https://sepolia.etherscan.io/tx/${txResponse.hash}`);
+                  updateTransactionProgress(txId, 2, 2, "Transaction submitted successfully", "completed", txResponse.hash);
                   pendingTx.resolve(txResponse.hash);
                   console.log("\u23F3 Waiting for confirmation...");
                   txResponse.wait().then((receipt) => {
@@ -25083,9 +25106,12 @@
                       console.log("\u{1F389} Transaction confirmed!", receipt);
                       console.log("Gas used:", receipt.gasUsed.toString());
                       console.log("Block number:", receipt.blockNumber);
+                      setTimeout(() => clearTransactionProgress(), 5e3);
                     }
                   }).catch((error) => {
                     console.error("\u274C Transaction failed:", error);
+                    updateTransactionProgress(txId, 2, 2, "Transaction failed", "error", void 0, error.message);
+                    setTimeout(() => clearTransactionProgress(), 1e4);
                   });
                 } catch (error) {
                   console.error("\u{1F4A5}\u{1F4A5}\u{1F4A5} TRANSACTION SUBMISSION COMPLETELY FAILED \u{1F4A5}\u{1F4A5}\u{1F4A5}");
@@ -25100,6 +25126,8 @@
                     console.error("   This means the funding mechanism failed or was skipped");
                     console.error("   Check if the funding logs appeared above");
                   }
+                  updateTransactionProgress(txId, 0, 2, "Transaction failed", "error", void 0, error?.message || "Unknown error");
+                  setTimeout(() => clearTransactionProgress(), 1e4);
                   pendingTx.reject(error);
                 }
               })();
@@ -25248,6 +25276,9 @@
                 console.error("Error getting pool balance:", error);
                 sendResponse({ error: "Failed to get pool balance" });
               }
+            }
+            if (msg.type === "getTransactionProgress") {
+              sendResponse({ progress: activeTransactionProgress });
             }
             if (msg.type === "depositToPool") {
               const { amount } = msg;
