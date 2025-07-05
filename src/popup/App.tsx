@@ -55,6 +55,33 @@ const App = () => {
     }
   };
 
+  const loadSessionAddresses = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'getAllSessions' });
+      if (response && !response.error) {
+        setSessionAddresses(response);
+      }
+    } catch (err) {
+      console.error('Error loading session addresses:', err);
+    }
+  };
+
+  const switchToSession = async (sessionNumber: number) => {
+    try {
+      const response = await chrome.runtime.sendMessage({ 
+        type: 'switchToSession', 
+        sessionNumber 
+      });
+      if (response && !response.error) {
+        await loadExistingWallet();
+        await loadSessionAddresses();
+        setShowSessionList(false);
+      }
+    } catch (err) {
+      console.error('Error switching session:', err);
+    }
+  };
+
   const loadExistingWallet = async () => {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'getWalletInfo' });
@@ -237,7 +264,28 @@ const App = () => {
             
             {walletInfo.currentSessionAddress && (
               <div style={{ marginBottom: '15px' }}>
-                <strong style={{ color: '#28a745' }}>Current Session Address:</strong>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                  <strong style={{ color: '#28a745' }}>Current Session Address:</strong>
+                  <button
+                    onClick={() => {
+                      setShowSessionList(!showSessionList);
+                      if (!showSessionList) {
+                        loadSessionAddresses();
+                      }
+                    }}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '11px',
+                      backgroundColor: '#007bff',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '3px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {showSessionList ? 'Hide Sessions' : 'Show All Sessions'}
+                  </button>
+                </div>
                 <div style={{ 
                   marginTop: '5px',
                   wordBreak: 'break-all',
@@ -250,6 +298,68 @@ const App = () => {
                 }}>
                   {walletInfo.currentSessionAddress}
                 </div>
+                
+                {showSessionList && (
+                  <div style={{
+                    marginTop: '10px',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    border: '1px solid #dee2e6',
+                    borderRadius: '4px',
+                    backgroundColor: '#f8f9fa'
+                  }}>
+                    <div style={{ 
+                      padding: '8px',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      borderBottom: '1px solid #dee2e6',
+                      backgroundColor: '#e9ecef'
+                    }}>
+                      Previous Sessions (click to switch)
+                    </div>
+                    {sessionAddresses.length > 0 ? (
+                      sessionAddresses.map((session) => (
+                        <div
+                          key={session.sessionNumber}
+                          onClick={() => switchToSession(session.sessionNumber)}
+                          style={{
+                            padding: '8px',
+                            borderBottom: '1px solid #dee2e6',
+                            cursor: 'pointer',
+                            backgroundColor: session.isCurrent ? '#d4edda' : 'transparent',
+                            transition: 'background-color 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!session.isCurrent) {
+                              e.currentTarget.style.backgroundColor = '#e9ecef';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!session.isCurrent) {
+                              e.currentTarget.style.backgroundColor = 'transparent';
+                            }
+                          }}
+                        >
+                          <div style={{ fontSize: '11px', color: '#6c757d', marginBottom: '2px' }}>
+                            Session #{session.sessionNumber} {session.isCurrent && '(Current)'}
+                          </div>
+                          <div style={{
+                            fontSize: '10px',
+                            fontFamily: 'monospace',
+                            wordBreak: 'break-all',
+                            color: '#495057'
+                          }}>
+                            {session.address}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ padding: '12px', fontSize: '11px', color: '#6c757d', textAlign: 'center' }}>
+                        No previous sessions found
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             

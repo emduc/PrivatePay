@@ -36826,6 +36826,8 @@
         const [isImporting, setIsImporting] = (0, import_react.useState)(false);
         const [error, setError] = (0, import_react.useState)("");
         const [addressSpoofing, setAddressSpoofing] = (0, import_react.useState)(false);
+        const [showSessionList, setShowSessionList] = (0, import_react.useState)(false);
+        const [sessionAddresses, setSessionAddresses] = (0, import_react.useState)([]);
         (0, import_react.useEffect)(() => {
           loadExistingWallet();
           loadAddressSpoofing();
@@ -36846,6 +36848,31 @@
             console.log("Address spoofing set to:", newValue);
           } catch (err) {
             console.error("Error saving address spoofing setting:", err);
+          }
+        };
+        const loadSessionAddresses = async () => {
+          try {
+            const response = await chrome.runtime.sendMessage({ type: "getAllSessions" });
+            if (response && !response.error) {
+              setSessionAddresses(response);
+            }
+          } catch (err) {
+            console.error("Error loading session addresses:", err);
+          }
+        };
+        const switchToSession = async (sessionNumber) => {
+          try {
+            const response = await chrome.runtime.sendMessage({
+              type: "switchToSession",
+              sessionNumber
+            });
+            if (response && !response.error) {
+              await loadExistingWallet();
+              await loadSessionAddresses();
+              setShowSessionList(false);
+            }
+          } catch (err) {
+            console.error("Error switching session:", err);
           }
         };
         const loadExistingWallet = async () => {
@@ -36990,21 +37017,31 @@
               borderRadius: "4px"
             }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { style: { margin: "0 0 15px 0", color: "#333" }, children: "PrivatePay Wallet" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: "15px" }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { style: { color: "#495057" }, children: "Master Address:" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-                  marginTop: "5px",
-                  wordBreak: "break-all",
-                  fontSize: "11px",
-                  fontFamily: "monospace",
-                  color: "#6c757d",
-                  backgroundColor: "#e9ecef",
-                  padding: "6px",
-                  borderRadius: "3px"
-                }, children: walletInfo.masterAddress })
-              ] }),
               walletInfo.currentSessionAddress && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: "15px" }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { style: { color: "#28a745" }, children: "Current Session Address:" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "5px" }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { style: { color: "#28a745" }, children: "Current Session Address:" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      onClick: () => {
+                        setShowSessionList(!showSessionList);
+                        if (!showSessionList) {
+                          loadSessionAddresses();
+                        }
+                      },
+                      style: {
+                        padding: "4px 8px",
+                        fontSize: "11px",
+                        backgroundColor: "#007bff",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "3px",
+                        cursor: "pointer"
+                      },
+                      children: showSessionList ? "Hide Sessions" : "Show All Sessions"
+                    }
+                  )
+                ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
                   marginTop: "5px",
                   wordBreak: "break-all",
@@ -37014,7 +37051,61 @@
                   backgroundColor: "#d4edda",
                   padding: "6px",
                   borderRadius: "3px"
-                }, children: walletInfo.currentSessionAddress })
+                }, children: walletInfo.currentSessionAddress }),
+                showSessionList && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+                  marginTop: "10px",
+                  maxHeight: "200px",
+                  overflowY: "auto",
+                  border: "1px solid #dee2e6",
+                  borderRadius: "4px",
+                  backgroundColor: "#f8f9fa"
+                }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                    padding: "8px",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    borderBottom: "1px solid #dee2e6",
+                    backgroundColor: "#e9ecef"
+                  }, children: "Previous Sessions (click to switch)" }),
+                  sessionAddresses.length > 0 ? sessionAddresses.map((session) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                    "div",
+                    {
+                      onClick: () => switchToSession(session.sessionNumber),
+                      style: {
+                        padding: "8px",
+                        borderBottom: "1px solid #dee2e6",
+                        cursor: "pointer",
+                        backgroundColor: session.isCurrent ? "#d4edda" : "transparent",
+                        transition: "background-color 0.2s"
+                      },
+                      onMouseEnter: (e) => {
+                        if (!session.isCurrent) {
+                          e.currentTarget.style.backgroundColor = "#e9ecef";
+                        }
+                      },
+                      onMouseLeave: (e) => {
+                        if (!session.isCurrent) {
+                          e.currentTarget.style.backgroundColor = "transparent";
+                        }
+                      },
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: "11px", color: "#6c757d", marginBottom: "2px" }, children: [
+                          "Session #",
+                          session.sessionNumber,
+                          " ",
+                          session.isCurrent && "(Current)"
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                          fontSize: "10px",
+                          fontFamily: "monospace",
+                          wordBreak: "break-all",
+                          color: "#495057"
+                        }, children: session.address })
+                      ]
+                    },
+                    session.sessionNumber
+                  )) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "12px", fontSize: "11px", color: "#6c757d", textAlign: "center" }, children: "No previous sessions found" })
+                ] })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: "12px", color: "#6c757d" }, children: [
                 "Sessions Generated: ",

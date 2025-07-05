@@ -521,6 +521,61 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ error: 'Transaction not found' });
         }
       }
+      
+      if (msg.type === 'getAllSessions') {
+        if (!masterWallet) {
+          sendResponse({ error: 'No master wallet available' });
+          return;
+        }
+        
+        try {
+          const sessions = [];
+          // Generate all session addresses up to current session counter
+          for (let i = 1; i <= sessionCounter; i++) {
+            const derivationPath = `m/44'/60'/0'/0/${i}`;
+            const sessionWallet = ethers.HDNodeWallet.fromPhrase(masterWallet.mnemonic!.phrase, undefined, derivationPath);
+            sessions.push({
+              sessionNumber: i,
+              address: sessionWallet.address,
+              isCurrent: i === sessionCounter
+            });
+          }
+          
+          // Sort by session number descending (newest first)
+          sessions.sort((a, b) => b.sessionNumber - a.sessionNumber);
+          sendResponse(sessions);
+        } catch (error) {
+          console.error('Error generating session list:', error);
+          sendResponse({ error: 'Failed to generate session list' });
+        }
+      }
+      
+      if (msg.type === 'switchToSession') {
+        const { sessionNumber } = msg;
+        if (!masterWallet) {
+          sendResponse({ error: 'No master wallet available' });
+          return;
+        }
+        
+        try {
+          // Generate the specified session wallet
+          const derivationPath = `m/44'/60'/0'/0/${sessionNumber}`;
+          const sessionWallet = ethers.HDNodeWallet.fromPhrase(masterWallet.mnemonic!.phrase, undefined, derivationPath);
+          
+          // Update current session
+          currentSessionWallet = sessionWallet;
+          sessionCounter = sessionNumber;
+          
+          // Save to storage
+          await chrome.storage.local.set({ sessionCounter });
+          
+          console.log(`🔄 Switched to session #${sessionNumber}:`, sessionWallet.address);
+          sendResponse({ success: true, address: sessionWallet.address });
+        } catch (error) {
+          console.error('Error switching session:', error);
+          sendResponse({ error: 'Failed to switch session' });
+        }
+      }
     } catch (error) {
       console.error('Background script error:', error);
       sendResponse({ error: 'Internal error' });
