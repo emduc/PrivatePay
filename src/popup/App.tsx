@@ -618,7 +618,7 @@ const App = () => {
                     fontWeight: '600'
                   }}
                 >
-                  Deposit 90% ({(parseFloat(masterBalance) * 0.9).toFixed(4)} ETH)
+                  Deposit ({(parseFloat(masterBalance) * 0.5).toFixed(4)} ETH)
                 </button>
               </div>
             </div>

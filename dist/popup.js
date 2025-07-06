@@ -55430,8 +55430,8 @@ ${prettyStateOverride(stateOverride)}`;
                       fontWeight: "600"
                     },
                     children: [
-                      "Deposit 90% (",
-                      (parseFloat(masterBalance) * 0.9).toFixed(4),
+                      "Deposit (",
+                      (parseFloat(masterBalance) * 0.5).toFixed(4),
                       " ETH)"
                     ]
                   }
